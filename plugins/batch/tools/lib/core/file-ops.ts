@@ -42,14 +42,14 @@ function generateOpId(oldPath: string, newPath: string): string {
  * Apply a replacement pattern to a filename
  *
  * Supports:
- *   - Simple string replacement: "vault" -> "repo" in "vault-loader.ts" -> "repo-loader.ts"
- *   - Regex groups: "vault(.+)" -> "repo$1" (not yet implemented)
+ *   - Simple string replacement: "repo" -> "repo" in "repo-loader.ts" -> "repo-loader.ts"
+ *   - Regex groups: "repo(.+)" -> "repo$1" (not yet implemented)
  */
 export function applyReplacement(filename: string, pattern: string | RegExp, replacement: string): string {
   if (typeof pattern === "string") {
     // Case-preserving replacement
     return filename.replace(new RegExp(pattern, "gi"), (match) => {
-      // Preserve case: vault -> repo, Vault -> Repo, VAULT -> REPO
+      // Preserve case: repo -> repo, Vault -> Repo, VAULT -> REPO
       if (match === match.toUpperCase()) return replacement.toUpperCase()
       if (match[0] === match[0].toUpperCase()) return replacement[0].toUpperCase() + replacement.slice(1)
       return replacement
@@ -155,10 +155,10 @@ export function checkFileConflicts(fileOps: FileOp[], cwd: string = process.cwd(
  * Returns edit operations to update those imports
  *
  * Uses ts-morph to accurately parse TypeScript/JavaScript files and find:
- * - import declarations: import { foo } from "./vault"
- * - export declarations: export { foo } from "./vault"
- * - dynamic imports: await import("./vault")
- * - require calls: require("./vault")
+ * - import declarations: import { foo } from "./repo"
+ * - export declarations: export { foo } from "./repo"
+ * - dynamic imports: await import("./repo")
+ * - require calls: require("./repo")
  */
 export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()): Edit[] {
   if (fileOps.length === 0) return []

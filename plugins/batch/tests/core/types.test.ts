@@ -99,16 +99,16 @@ describe("Zod schemas", () => {
   describe("Editset", () => {
     test("validates complete structure", () => {
       const valid = {
-        id: "rename-vault-to-repo-1706000000",
+        id: "rename-repo-to-repo-1706000000",
         operation: "rename",
-        from: "vault",
+        from: "repo",
         to: "repo",
         refs: [
           {
             refId: "abc12345",
             file: "src/foo.ts",
             range: [1, 1, 1, 10] as [number, number, number, number],
-            preview: "const vault = 1",
+            preview: "const repo = 1",
             checksum: "abc123456789",
             selected: true,
           },
@@ -130,8 +130,8 @@ describe("Zod schemas", () => {
       const withSymbolKey = {
         id: "rename-1",
         operation: "rename",
-        symbolKey: "src/foo.ts:1:1:vault",
-        from: "vault",
+        symbolKey: "src/foo.ts:1:1:repo",
+        from: "repo",
         to: "repo",
         refs: [],
         edits: [],
@@ -142,8 +142,8 @@ describe("Zod schemas", () => {
       const withPattern = {
         id: "rename-1",
         operation: "rename",
-        pattern: "vault",
-        from: "vault",
+        pattern: "repo",
+        from: "repo",
         to: "repo",
         refs: [],
         edits: [],
@@ -156,8 +156,8 @@ describe("Zod schemas", () => {
   describe("SymbolMatch", () => {
     test("validates symbol match", () => {
       const valid = {
-        symbolKey: "src/foo.ts:1:1:vault",
-        name: "vault",
+        symbolKey: "src/foo.ts:1:1:repo",
+        name: "repo",
         kind: "variable",
         file: "src/foo.ts",
         line: 1,

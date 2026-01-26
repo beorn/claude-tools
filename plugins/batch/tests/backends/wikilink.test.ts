@@ -201,7 +201,7 @@ describe("wikilink backend", () => {
 
       tempDir = mkdtempSync(join(tmpdir(), "wikilink-test-"))
 
-      // Create test vault structure
+      // Create test repo structure
       writeFileSync(
         join(tempDir, "index.md"),
         `# Index

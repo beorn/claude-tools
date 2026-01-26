@@ -98,7 +98,7 @@ TypeScript/JavaScript Commands (ts-morph):
 
 File Operations:
   file.find                               Find files to rename
-    --pattern <string>                    Filename pattern to match (e.g., "vault")
+    --pattern <string>                    Filename pattern to match (e.g., "repo")
     --replace <string>                    Replacement (e.g., "repo")
     --glob <glob>                         File glob filter (default: **/*.{ts,tsx})
 
@@ -145,7 +145,7 @@ Editset Commands:
 
 Migration Commands:
   migrate                               Orchestrate full terminology migration
-    --from <pattern>                    Term to replace (e.g., "vault")
+    --from <pattern>                    Term to replace (e.g., "repo")
     --to <replacement>                  New term (e.g., "repo")
     --glob <glob>                       File glob filter (default: **/*.{ts,tsx})
     --dry-run                           Preview without applying changes
@@ -161,8 +161,8 @@ Examples:
   # TypeScript: Batch rename widget → gadget
   refactor.ts rename.batch --pattern widget --replace gadget --output editset.json
 
-  # File rename: vault*.ts → repo*.ts
-  refactor.ts file.rename --pattern vault --replace repo --glob "**/*.ts" --output file-editset.json
+  # File rename: repo*.ts → repo*.ts
+  refactor.ts file.rename --pattern repo --replace repo --glob "**/*.ts" --output file-editset.json
   refactor.ts file.apply file-editset.json --dry-run
   refactor.ts file.apply file-editset.json
 
@@ -181,9 +181,9 @@ Examples:
   # Apply changes
   refactor.ts editset.apply editset.json
 
-  # Full terminology migration: vault → repo
-  refactor.ts migrate --from vault --to repo --dry-run
-  refactor.ts migrate --from vault --to repo
+  # Full terminology migration: repo → repo
+  refactor.ts migrate --from repo --to repo --dry-run
+  refactor.ts migrate --from repo --to repo
 `)
   process.exit(1)
 }

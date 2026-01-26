@@ -128,7 +128,7 @@ export const FileOp = z.object({
 export type FileOp = z.infer<typeof FileOp>
 
 export const FileEditset = z.object({
-  id: z.string(), // "file-rename-vault-to-repo-1706000000"
+  id: z.string(), // "file-rename-repo-to-repo-1706000000"
   operation: z.literal("file-rename"),
   pattern: z.string().optional(), // glob pattern used
   replacement: z.string().optional(), // replacement pattern

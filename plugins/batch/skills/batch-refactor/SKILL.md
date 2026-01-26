@@ -1276,7 +1276,22 @@ bun tools/refactor.ts migrate --from widget --to repo -o /tmp/editsets
 rg -l widget -g "*.ts" | wc -l  # Clean
 ```
 
-### 2. Use rg directly for exploration
+### 2. Preview editset contents
+
+Before applying, inspect what an editset will do:
+
+```bash
+# Quick look at the editset structure and refs
+cat /tmp/editset.json | head -50
+
+# See how many refs/edits
+cat /tmp/editset.json | jq '{refs: .refs | length, edits: .edits | length}'
+
+# Dry-run shows what would be applied
+bun tools/refactor.ts editset.apply /tmp/editset.json --dry-run
+```
+
+### 3. Use rg directly for exploration
 
 Before running batch operations, verify your patterns find what you expect:
 
@@ -1294,7 +1309,7 @@ rg -c "widget" -g "*.ts" | head -20
 rg -C 2 "createWidget" -g "*.ts"
 ```
 
-### 3. Use rg for file discovery too
+### 4. Use rg for file discovery too
 
 `rg --files` lists files matching globs, respecting .gitignore. One tool for everything:
 
@@ -1309,7 +1324,7 @@ rg --files -g "*widget*.ts"        # .ts files with "widget" in name
 rg --files packages/              # All files in packages/
 ```
 
-### 4. Avoid slow shell loops
+### 5. Avoid slow shell loops
 
 Shell loops with rg are slow. Use rg's built-in features instead:
 
@@ -1326,7 +1341,7 @@ rg --heading -n "widget" -g "*.ts"          # Group by filename
 rg --vimgrep "widget" -g "*.ts"             # file:line:col:match
 ```
 
-### 5. Verify glob patterns work
+### 6. Verify glob patterns work
 
 Test glob patterns with rg directly before using them in batch commands:
 
