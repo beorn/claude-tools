@@ -71,6 +71,9 @@ Commands:
 
   editset.verify <file>                   Verify editset can be applied
 
+Global Options:
+  --tsconfig <file>                       Path to tsconfig.json (default: tsconfig.json)
+
 Examples:
   # Find symbol at location
   refactor.ts symbol.at src/types.ts 42 5
@@ -111,8 +114,9 @@ async function main() {
     usage()
   }
 
-  // Load project once
-  const project = getProject()
+  // Lazy project loading - only load when needed
+  const tsConfigPath = getArg("--tsconfig") || "tsconfig.json"
+  const lazyProject = () => getProject(tsConfigPath)
 
   switch (command) {
     case "symbol.at": {
@@ -124,7 +128,7 @@ async function main() {
         error("Usage: symbol.at <file> <line> [col]")
       }
 
-      const symbol = getSymbolAt(project, file, line, col)
+      const symbol = getSymbolAt(lazyProject(), file, line, col)
       if (!symbol) {
         error(`No symbol found at ${file}:${line}:${col}`)
       }
@@ -138,7 +142,7 @@ async function main() {
         error("Usage: refs.list <symbolKey>")
       }
 
-      const refs = getReferences(project, symbolKey)
+      const refs = getReferences(lazyProject(), symbolKey)
       output(refs)
       break
     }
@@ -150,7 +154,7 @@ async function main() {
       }
 
       const regex = new RegExp(pattern, "i")
-      const symbols = findSymbols(project, regex)
+      const symbols = findSymbols(lazyProject(), regex)
       output(symbols)
       break
     }
@@ -164,7 +168,7 @@ async function main() {
         error("Usage: rename.propose <symbolKey> <newName> [--output file]")
       }
 
-      const editset = createRenameProposal(project, symbolKey, newName)
+      const editset = createRenameProposal(lazyProject(), symbolKey, newName)
       saveEditset(editset, outputFile)
       output({
         editsetPath: outputFile,
@@ -189,13 +193,13 @@ async function main() {
 
       // Check for conflicts mode
       if (checkConflictsFlag) {
-        const report = checkConflicts(project, regex, replacement)
+        const report = checkConflicts(lazyProject(), regex, replacement)
         output(report)
         break
       }
 
       // Normal batch rename (with optional skip)
-      const symbols = findSymbols(project, regex)
+      const symbols = findSymbols(lazyProject(), regex)
       const skippedCount = skipNames.length > 0 ? symbols.filter((s) => skipNames.includes(s.name)).length : 0
       console.error(`Found ${symbols.length} symbols matching /${pattern}/i`)
       if (skippedCount > 0) {
@@ -204,8 +208,8 @@ async function main() {
 
       const editset =
         skipNames.length > 0
-          ? createBatchRenameProposalFiltered(project, regex, replacement, skipNames)
-          : createBatchRenameProposal(project, regex, replacement)
+          ? createBatchRenameProposalFiltered(lazyProject(), regex, replacement, skipNames)
+          : createBatchRenameProposal(lazyProject(), regex, replacement)
       saveEditset(editset, outputFile)
 
       output({

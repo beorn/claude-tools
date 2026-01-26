@@ -174,11 +174,25 @@ export function findSymbols(project: Project, pattern: RegExp): SymbolMatch[] {
       })
     }
 
-    // Classes
+    // Classes and class members
     for (const cls of sourceFile.getClasses()) {
       const name = cls.getName()
       if (name && pattern.test(name)) {
         addMatch(cls.getNameNode()!, "class")
+      }
+      // Class methods
+      for (const method of cls.getMethods()) {
+        const methodName = method.getName()
+        if (pattern.test(methodName)) {
+          addMatch(method.getNameNode(), "method")
+        }
+      }
+      // Class properties
+      for (const prop of cls.getProperties()) {
+        const propName = prop.getName()
+        if (pattern.test(propName)) {
+          addMatch(prop.getNameNode(), "property")
+        }
       }
     }
   }
