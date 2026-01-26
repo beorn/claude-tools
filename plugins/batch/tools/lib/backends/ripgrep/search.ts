@@ -1,4 +1,4 @@
-import { execSync } from "child_process"
+import { execFileSync } from "child_process"
 import { readFileSync, existsSync } from "fs"
 import type { Reference, Editset, Edit } from "../../core/types"
 import { computeChecksum, computeRefId } from "../../core/apply"
@@ -77,7 +77,7 @@ interface RgLine {
 
 function runRg(args: string[]): RgMatch[] | null {
   try {
-    const output = execSync(`rg ${args.join(" ")}`, {
+    const output = execFileSync("rg", args, {
       encoding: "utf-8",
       maxBuffer: 50 * 1024 * 1024, // 50MB buffer
       stdio: ["pipe", "pipe", "pipe"],

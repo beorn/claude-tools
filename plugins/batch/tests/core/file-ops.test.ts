@@ -81,8 +81,8 @@ describe("findFilesToRename", () => {
   test("computes correct new paths", async () => {
     const ops = await findFilesToRename("vault", "repo", "**/*.ts", FIXTURE_DIR)
 
-    const vaultOp = ops.find((op) => op.oldPath === "vault.ts")
-    expect(vaultOp?.newPath).toBe("repo.ts")
+    const repoOp = ops.find((op) => op.oldPath === "vault.ts")
+    expect(repoOp?.newPath).toBe("repo.ts")
 
     const loaderOp = ops.find((op) => op.oldPath === "vault-loader.ts")
     expect(loaderOp?.newPath).toBe("repo-loader.ts")
@@ -111,9 +111,9 @@ describe("checkFileConflicts", () => {
 
     // vault.ts -> repo.ts should conflict because repo.ts exists
     expect(report.conflicts.length).toBeGreaterThan(0)
-    const vaultConflict = report.conflicts.find((c) => c.oldPath === "vault.ts")
-    expect(vaultConflict).toBeDefined()
-    expect(vaultConflict?.reason).toBe("target_exists")
+    const repoConflict = report.conflicts.find((c) => c.oldPath === "vault.ts")
+    expect(repoConflict).toBeDefined()
+    expect(repoConflict?.reason).toBe("target_exists")
   })
 
   test("identifies safe renames", async () => {

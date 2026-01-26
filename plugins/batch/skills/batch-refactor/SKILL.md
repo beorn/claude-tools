@@ -26,6 +26,9 @@ Use this skill when the user wants to make changes across multiple files:
 
 ## Why Use Batch Refactor (Not Manual Edit)
 
+**⛔ NEVER use these for batch changes:** `sed`, `awk`, `perl`, `python -c`, or manual Edit loops.
+These tools lack checksums, miss edge cases, and can corrupt files. See "Tips & Tricks → STOP: Manual Edit Tools" below.
+
 **ALWAYS use this tool instead of manual editing when:**
 
 | Situation | Manual Edits | Batch Refactor |
@@ -37,20 +40,20 @@ Use this skill when the user wants to make changes across multiple files:
 
 ### Example: Why Manual Editing Fails
 
-**Task**: Rename `createVault` to `createRepo`
+**Task**: Rename `createWidget` to `createGadget`
 
 **Manual approach (WRONG)**:
 ```bash
 # You'd miss these patterns:
-const { createVault } = api          # destructuring
-const init = createVault             # assignment
-type Factory = typeof createVault    # type reference
-async ({ createVault }: Deps) => {}  # parameter destructuring
+const { createWidget } = api          # destructuring
+const init = createWidget             # assignment
+type Factory = typeof createWidget    # type reference
+async ({ createWidget }: Deps) => {}  # parameter destructuring
 ```
 
 **Batch refactor approach (CORRECT)**:
 ```bash
-bun tools/refactor.ts rename.batch --pattern createVault --replace createRepo --output edits.json
+bun tools/refactor.ts rename.batch --pattern createWidget --replace createGadget --output edits.json
 bun tools/refactor.ts editset.apply edits.json
 # Finds ALL 127 references including destructuring, types, re-exports
 ```
@@ -59,17 +62,17 @@ bun tools/refactor.ts editset.apply edits.json
 
 | You want to... | Command | Example |
 |----------------|---------|---------|
-| Rename TypeScript function/variable | `rename.batch` | `--pattern createVault --replace createRepo` |
-| Rename TypeScript type/interface | `rename.batch` | `--pattern VaultConfig --replace RepoConfig` |
-| Rename files | `file.rename` | `--pattern vault --replace repo --glob "**/*.ts"` |
-| Update text in markdown | `pattern.replace --backend ripgrep` | `--pattern vault --replace repo --glob "**/*.md"` |
-| Full terminology migration | `migrate` | `--from vault --to repo` |
+| Rename TypeScript function/variable | `rename.batch` | `--pattern createWidget --replace createGadget` |
+| Rename TypeScript type/interface | `rename.batch` | `--pattern WidgetConfig --replace GadgetConfig` |
+| Rename files | `file.rename` | `--pattern widget --replace repo --glob "**/*.ts"` |
+| Update text in markdown | `pattern.replace --backend ripgrep` | `--pattern widget --replace repo --glob "**/*.md"` |
+| Full terminology migration | `migrate` | `--from widget --to repo` |
 
 ---
 
 ## Comprehensive Migration Workflow
 
-For large terminology migrations (e.g., "rename vault to repo"), follow this phased approach:
+For large terminology migrations (e.g., "rename widget to repo"), follow this phased approach:
 
 ### Phase 1: Conflict Analysis (BEFORE any changes)
 
@@ -79,10 +82,10 @@ For large terminology migrations (e.g., "rename vault to repo"), follow this pha
 # Run from the batch plugin directory
 
 # 1. Check file name conflicts
-bun tools/refactor.ts file.rename --pattern vault --replace repo --glob "**/*.ts" --check-conflicts
+bun tools/refactor.ts file.rename --pattern widget --replace repo --glob "**/*.ts" --check-conflicts
 
 # 2. Check symbol conflicts
-bun tools/refactor.ts rename.batch --pattern vault --replace repo --check-conflicts
+bun tools/refactor.ts rename.batch --pattern widget --replace repo --check-conflicts
 
 # 3. Check for existing targets manually
 ls **/repo*.ts 2>/dev/null || echo "No existing repo files"
@@ -91,8 +94,8 @@ ls **/repo*.ts 2>/dev/null || echo "No existing repo files"
 **For each conflict**, document resolution:
 | Conflict | Resolution |
 |----------|------------|
-| `vault.ts` → `repo.ts` (exists) | Merge and delete |
-| `createVault` → `createRepo` (exists) | Update references, keep new |
+| `widget.ts` → `repo.ts` (exists) | Merge and delete |
+| `createWidget` → `createRepo` (exists) | Update references, keep new |
 
 **Never use --skip without explicit user approval.**
 
@@ -104,7 +107,7 @@ Rename files FIRST (before symbol renames) because:
 
 ```bash
 # Create file rename proposal
-bun tools/refactor.ts file.rename --pattern vault --replace repo \
+bun tools/refactor.ts file.rename --pattern widget --replace repo \
   --glob "**/*.{ts,tsx}" \
   --output file-editset.json
 
@@ -121,7 +124,7 @@ After files are renamed, rename symbols:
 
 ```bash
 # Create symbol rename proposal
-bun tools/refactor.ts rename.batch --pattern vault --replace repo \
+bun tools/refactor.ts rename.batch --pattern widget --replace repo \
   --output symbol-editset.json
 
 # Preview
@@ -137,13 +140,13 @@ Rename remaining mentions in comments, strings, markdown:
 
 ```bash
 # TypeScript comments and strings
-bun tools/refactor.ts pattern.replace --pattern vault --replace repo \
+bun tools/refactor.ts pattern.replace --pattern widget --replace repo \
   --glob "**/*.{ts,tsx}" \
   --backend ripgrep \
   --output text-editset.json
 
 # Markdown documentation
-bun tools/refactor.ts pattern.replace --pattern vault --replace repo \
+bun tools/refactor.ts pattern.replace --pattern widget --replace repo \
   --glob "**/*.md" \
   --backend ripgrep \
   --output docs-editset.json
@@ -163,11 +166,11 @@ cd vendor/<submodule>
 
 # Run the same workflow (conflicts, files, symbols, text)
 bun ../beorn-claude-tools/plugins/batch/tools/refactor.ts rename.batch \
-  --pattern vault --replace repo --check-conflicts
+  --pattern widget --replace repo --check-conflicts
 
 # After applying
 git add -A
-git commit -m "refactor: rename vault → repo"
+git commit -m "refactor: rename widget → repo"
 git push
 
 # Return to main repo
@@ -180,7 +183,7 @@ git commit -m "chore(vendor): update <submodule> with repo terminology"
 
 ```bash
 # Check for remaining mentions
-grep -ri vault . --include="*.ts" --include="*.tsx" | grep -v node_modules | wc -l
+grep -ri widget . --include="*.ts" --include="*.tsx" | grep -v node_modules | wc -l
 
 # Type check
 bun tsc --noEmit
@@ -258,6 +261,21 @@ bun run test:all
 | `editset.select <file> --include/--exclude` | Filter editset refs |
 | `editset.verify <file>` | Check editset can be applied |
 | `editset.apply <file> [--dry-run]` | Apply with checksum verification |
+
+### Package.json Operations
+
+| Command | Purpose |
+|---------|---------|
+| `package.find --target <file>` | Find package.json refs to a file |
+| `package.rename --old <path> --new <path>` | Update paths when file renamed |
+| `package.broken` | Find broken paths in package.json |
+
+### TSConfig.json Operations
+
+| Command | Purpose |
+|---------|---------|
+| `tsconfig.find --target <file>` | Find tsconfig.json refs to a file |
+| `tsconfig.rename --old <path> --new <path>` | Update paths when file renamed |
 
 ---
 
@@ -531,11 +549,11 @@ The tool preserves case during renames:
 
 | Original | Pattern | Replacement | Result |
 |----------|---------|-------------|--------|
-| `vault` | `vault` | `repo` | `repo` |
-| `Vault` | `vault` | `repo` | `Repo` |
-| `VAULT` | `vault` | `repo` | `REPO` |
-| `vaultPath` | `vault` | `repo` | `repoPath` |
-| `VaultConfig.ts` | `vault` | `repo` | `RepoConfig.ts` |
+| `widget` | `widget` | `repo` | `repo` |
+| `Vault` | `widget` | `repo` | `Repo` |
+| `VAULT` | `widget` | `repo` | `REPO` |
+| `widgetPath` | `widget` | `repo` | `repoPath` |
+| `WidgetConfig.ts` | `widget` | `repo` | `GadgetConfig.ts` |
 
 ---
 
@@ -610,11 +628,11 @@ Before making changes, gather project context:
 
 | Context | Confidence |
 |---------|------------|
-| Our code (`const vaultRoot`) | HIGH |
-| Our compound identifier (`vaultHelper`) | HIGH |
-| Our error message (`"vault not found"`) | HIGH |
-| External reference (`"Obsidian vault"`) | LOW - may need to keep |
-| URL/path (`vault.example.com`) | LOW |
+| Our code (`const widgetRoot`) | HIGH |
+| Our compound identifier (`widgetHelper`) | HIGH |
+| Our error message (`"widget not found"`) | HIGH |
+| External reference (`"Obsidian widget"`) | LOW - may need to keep |
+| URL/path (`widget.example.com`) | LOW |
 
 **Default to HIGH** unless clearly external.
 
@@ -626,11 +644,11 @@ ast-grep misses TypeScript-specific patterns:
 
 ```typescript
 // ast-grep renames this ✓
-const vaultDir = "/path"
+const widgetDir = "/path"
 
 // But MISSES these ✗
-interface TestEnv { vaultDir: string }  // property definition
-({ vaultDir }) => { ... }               // destructuring
+interface TestEnv { widgetDir: string }  // property definition
+({ widgetDir }) => { ... }               // destructuring
 ```
 
 **Rule**: If it shows up in "Find All References" in your IDE, use ts-morph.
@@ -639,23 +657,23 @@ interface TestEnv { vaultDir: string }  // property definition
 
 ## Example: Complete Migration
 
-**User request:** "rename vault to repo everywhere"
+**User request:** "rename widget to repo everywhere"
 
 **Claude's plan:**
 
 1. **Analyze scope**
    ```bash
-   grep -ri vault . --include="*.ts" | wc -l
-   find . -name "*vault*" -not -path "./node_modules/*"
+   grep -ri widget . --include="*.ts" | wc -l
+   find . -name "*widget*" -not -path "./node_modules/*"
    ```
 
 2. **Check ALL conflicts**
    ```bash
    # File conflicts
-   bun tools/refactor.ts file.rename --pattern vault --replace repo --check-conflicts
+   bun tools/refactor.ts file.rename --pattern widget --replace repo --check-conflicts
 
    # Symbol conflicts
-   bun tools/refactor.ts rename.batch --pattern vault --replace repo --check-conflicts
+   bun tools/refactor.ts rename.batch --pattern widget --replace repo --check-conflicts
    ```
 
 3. **Document conflict resolutions** (ask user if unclear)
@@ -668,7 +686,7 @@ interface TestEnv { vaultDir: string }  // property definition
 
 5. **Verify:**
    ```bash
-   grep -ri vault . --include="*.ts" | wc -l  # Should be 0 (or only allowed)
+   grep -ri widget . --include="*.ts" | wc -l  # Should be 0 (or only allowed)
    bun tsc --noEmit
    bun fix
    bun run test:all
@@ -710,7 +728,7 @@ Each reference in an editset includes:
 # Run from the batch plugin directory
 
 # 1. Generate editset with enriched context
-bun tools/refactor.ts rename.batch --pattern vault --replace repo -o editset.json
+bun tools/refactor.ts rename.batch --pattern widget --replace repo -o editset.json
 
 # 2. LLM reviews the editset and patches specific references
 #    - Set replace to null to skip a reference
@@ -730,7 +748,7 @@ Given an editset with these references:
 ```json
 {
   "refs": [
-    { "id": "a1b2", "kind": "decl", "scope": "createVault", "replace": "repo" },
+    { "id": "a1b2", "kind": "decl", "scope": "createWidget", "replace": "repo" },
     { "id": "b2c3", "kind": "type", "scope": null, "replace": "repo" },
     { "id": "c3d4", "kind": "comment", "scope": null, "replace": "repo" }
   ]
@@ -740,7 +758,7 @@ Given an editset with these references:
 An LLM might decide:
 - Keep `a1b2` as-is (standard replacement)
 - Change `b2c3` to `"Repository"` (capitalize for type name)
-- Set `c3d4` to `null` (skip comment, it refers to external Obsidian vault)
+- Set `c3d4` to `null` (skip comment, it refers to external Obsidian widget)
 
 ```bash
 bun tools/refactor.ts editset.patch editset.json <<'EOF'
@@ -755,9 +773,9 @@ The `ctx` field shows surrounding lines with the match marked:
 ```json
 {
   "ctx": [
-    "  // Create a new vault for the user",
+    "  // Create a new widget for the user",
     "► const vault = createVault(config)",
-    "  return vault"
+    "  return widget"
   ]
 }
 ```
@@ -777,16 +795,16 @@ The `migrate` command orchestrates a full terminology migration in phases:
 # Run from the batch plugin directory
 
 # Preview what would be migrated
-bun tools/refactor.ts migrate --from vault --to repo --dry-run
+bun tools/refactor.ts migrate --from widget --to repo --dry-run
 
 # Run migration (creates editsets in .editsets/ directory)
-bun tools/refactor.ts migrate --from vault --to repo
+bun tools/refactor.ts migrate --from widget --to repo
 
 # Custom output directory
-bun tools/refactor.ts migrate --from vault --to repo --output ./my-editsets
+bun tools/refactor.ts migrate --from widget --to repo --output ./my-editsets
 
 # Custom file glob
-bun tools/refactor.ts migrate --from vault --to repo --glob "**/*.{ts,tsx,md}"
+bun tools/refactor.ts migrate --from widget --to repo --glob "**/*.{ts,tsx,md}"
 ```
 
 ### What Migrate Does
@@ -829,9 +847,9 @@ When an LLM reviews an editset, it sees enriched context for each reference:
 
 ```json
 {
-  "id": "rename-vault-to-repo-1706123456789",
+  "id": "rename-widget-to-repo-1706123456789",
   "operation": "rename",
-  "from": "vault",
+  "from": "widget",
   "to": "repo",
   "refs": [
     {
@@ -847,7 +865,7 @@ When an LLM reviews an editset, it sees enriched context for each reference:
         "  return root;"
       ],
       "replace": "repo",
-      "preview": "const root = createVault(config);",
+      "preview": "const root = createWidget(config);",
       "checksum": "abc123...",
       "selected": true
     },
@@ -862,7 +880,7 @@ When an LLM reviews an editset, it sees enriched context for each reference:
         "► throw new Error(\"vault not found\");"
       ],
       "replace": "repo",
-      "preview": "throw new Error(\"vault not found\");",
+      "preview": "throw new Error(\"widget not found\");",
       "checksum": "def456...",
       "selected": true
     }
@@ -947,33 +965,33 @@ The patch command extracts `refId` and `replace` from each ref.
 
 ### Example 9: Destructuring Parameters (ts-morph REQUIRED)
 
-**Scenario**: Rename `vaultPath` to `repoPath` — appears in destructuring patterns
+**Scenario**: Rename `widgetPath` to `repoPath` — appears in destructuring patterns
 
 **Manual grep would find:**
 ```typescript
-const vaultPath = "/path/to/vault"  // ✓ obvious
+const widgetPath = "/path/to/widget"  // ✓ obvious
 ```
 
 **But MISS these (ts-morph catches them):**
 ```typescript
 // Destructuring in function parameter
-export function init({ vaultPath, config }: Options) {
-  return load(vaultPath)
+export function init({ widgetPath, config }: Options) {
+  return load(widgetPath)
 }
 
 // Nested destructuring
-const { paths: { vaultPath } } = config
+const { paths: { widgetPath } } = config
 
 // Arrow function parameter destructuring
-const handler = ({ vaultPath }: Ctx) => vaultPath
+const handler = ({ widgetPath }: Ctx) => widgetPath
 
 // Object shorthand
-return { vaultPath }  // property AND value both renamed
+return { widgetPath }  // property AND value both renamed
 ```
 
 **Command:**
 ```bash
-bun tools/refactor.ts rename.batch --pattern vaultPath --replace repoPath --output edits.json
+bun tools/refactor.ts rename.batch --pattern widgetPath --replace repoPath --output edits.json
 bun tools/refactor.ts editset.apply edits.json
 # All 47 occurrences updated atomically
 ```
@@ -1084,45 +1102,45 @@ bun tools/refactor.ts editset.apply dynamic.json
 
 ### Example 14: Test Mocks and Fixtures
 
-**Scenario**: Rename `createVault` — but test mocks use it too
+**Scenario**: Rename `createWidget` — but test mocks use it too
 
 ```typescript
-// src/vault.ts
-export function createVault() {}
+// src/widget.ts
+export function createWidget() {}
 
-// tests/vault.test.ts
-vi.mock("../vault", () => ({
-  createVault: vi.fn(),  // Mock uses same name
+// tests/widget.test.ts
+vi.mock("../widget", () => ({
+  createWidget: vi.fn(),  // Mock uses same name
 }))
 
-// tests/fixtures/vault-fixture.ts
-export const mockCreateVault = () => {}  // Compound identifier
+// tests/fixtures/widget-fixture.ts
+export const mockCreateWidget = () => {}  // Compound identifier
 ```
 
 **ts-morph renames ALL including mocks:**
 ```bash
-bun tools/refactor.ts rename.batch --pattern createVault --replace createRepo --output edits.json
-# Found in: src/vault.ts, 12 test files, 3 fixture files
+bun tools/refactor.ts rename.batch --pattern createWidget --replace createGadget --output edits.json
+# Found in: src/widget.ts, 12 test files, 3 fixture files
 ```
 
 ---
 
 ### Example 15: Partial Word Match with Case Preservation
 
-**Scenario**: Rename all `vault` occurrences — different casings exist
+**Scenario**: Rename all `widget` occurrences — different casings exist
 
 ```typescript
-const vault = {}           // lowercase
+const widget = {}           // lowercase
 const Vault = {}           // PascalCase
 const VAULT_PATH = ""      // SCREAMING_CASE
-const vaultConfig = {}     // camelCase compound
+const widgetConfig = {}     // camelCase compound
 class VaultManager {}      // PascalCase compound
 const VAULT_OPTIONS = {}   // SCREAMING compound
 ```
 
 **Automatic case preservation:**
 ```bash
-bun tools/refactor.ts rename.batch --pattern vault --replace repo --output edits.json
+bun tools/refactor.ts rename.batch --pattern widget --replace repo --output edits.json
 ```
 
 **Result:**
@@ -1143,15 +1161,15 @@ const REPO_OPTIONS = {}    // SCREAMING compound
 
 ```
 packages/
-  core/src/vault.ts
-  cli/src/commands/vault.ts
-  tui/src/views/vault-view.tsx
-  storage/src/vault-loader.ts
+  core/src/widget.ts
+  cli/src/commands/widget.ts
+  tui/src/views/widget-view.tsx
+  storage/src/widget-loader.ts
 ```
 
 **Single command handles all:**
 ```bash
-bun tools/refactor.ts migrate --from vault --to repo --glob "packages/**/*.{ts,tsx}"
+bun tools/refactor.ts migrate --from widget --to repo --glob "packages/**/*.{ts,tsx}"
 
 # Creates editsets in .editsets/:
 # - 01-file-renames.json (4 files)
@@ -1210,3 +1228,144 @@ Is this a terminology migration (file names + code + docs)?
 | Rollback on error | Manual git restore | Automatic (checksums) |
 
 **Rule of thumb**: If you'd make more than 5 edits, use batch refactor
+
+---
+
+## Tips & Tricks
+
+### ⛔ STOP: Manual Edit Tools
+
+**IMMEDIATELY STOP AND THINK** if you're about to use any of these:
+
+| Tool | What it does | Why you should stop |
+|------|--------------|---------------------|
+| `sed` | Stream editing | batch-refactor does this better with checksums |
+| `awk` | Pattern processing | batch-refactor handles this |
+| `perl -pe` | Regex replacement | batch-refactor does this safely |
+| `python -c` | Quick scripts | batch-refactor is purpose-built for this |
+| Manual `Edit` tool in loop | Many small edits | batch-refactor does this atomically |
+
+**Before using these, ask yourself:**
+
+1. **Can batch-refactor do this?** → Use `pattern.replace` or `rename.batch`
+2. **Is this a text pattern?** → Use `pattern.replace --backend ripgrep`
+3. **Is this a TypeScript symbol?** → Use `rename.batch` (ts-morph)
+4. **Is this a structural pattern?** → Use `pattern.replace --backend ast-grep`
+
+**If batch-refactor CAN'T do what you need:**
+
+1. **File a feature request** as a bead: `bd create --title "batch-refactor: support X" --type=task`
+2. **Document the gap** in the bead description
+3. **Only then** use the manual tool as a workaround
+
+**The goal:** Every manual edit is a signal that batch-refactor is missing a feature.
+
+---
+
+### 1. Store editsets in /tmp
+
+Storing editsets outside the repo avoids cluttering your working directory and needing `grep -v .editsets` when verifying:
+
+```bash
+# Instead of:
+bun tools/refactor.ts migrate --from widget --to repo -o .editsets
+rg -l widget -g "*.ts" | grep -v .editsets | wc -l  # Annoying
+
+# Do this:
+bun tools/refactor.ts migrate --from widget --to repo -o /tmp/editsets
+rg -l widget -g "*.ts" | wc -l  # Clean
+```
+
+### 2. Use rg directly for exploration
+
+Before running batch operations, verify your patterns find what you expect:
+
+```bash
+# Find files containing pattern
+rg -l "useVault" -g "*.ts"
+
+# Show matches with line numbers
+rg -n "useVault" -g "*.ts"
+
+# Count matches
+rg -c "widget" -g "*.ts" | head -20
+
+# Show context around matches
+rg -C 2 "createWidget" -g "*.ts"
+```
+
+### 3. Use rg for file discovery too
+
+`rg --files` lists files matching globs, respecting .gitignore. One tool for everything:
+
+```bash
+# Instead of find (slow, doesn't respect .gitignore):
+find . -name "*widget*" -not -path "./node_modules/*"
+
+# Use rg --files with glob:
+rg --files -g "*widget*"           # Files with "widget" in name
+rg --files -g "*.ts" | head -10   # All .ts files
+rg --files -g "*widget*.ts"        # .ts files with "widget" in name
+rg --files packages/              # All files in packages/
+```
+
+### 4. Avoid slow shell loops
+
+Shell loops with rg are slow. Use rg's built-in features instead:
+
+```bash
+# SLOW - shell loop overhead - DON'T DO THIS
+rg -l "widget" | while read f; do
+  echo "=== $f ==="
+  rg -n "widget" "$f"
+done
+
+# FAST - single rg invocation
+rg -n "widget" -g "*.ts"                    # Filename:line:match
+rg --heading -n "widget" -g "*.ts"          # Group by filename
+rg --vimgrep "widget" -g "*.ts"             # file:line:col:match
+```
+
+### 5. Verify glob patterns work
+
+Test glob patterns with rg directly before using them in batch commands:
+
+```bash
+# Test the glob finds expected files
+rg --files -g "**/*.ts" | head -10
+rg --files -g "apps/**/*.tsx" | head -10
+
+# Then use same glob in batch command
+bun tools/refactor.ts pattern.replace --pattern widget --glob "apps/**/*.tsx" -o /tmp/edits.json
+```
+
+### 6. Check remaining mentions efficiently
+
+After migration, verify zero remaining mentions:
+
+```bash
+# Fast count of remaining mentions
+rg -c "widget" -g "*.ts" --stats
+
+# List files still containing pattern
+rg -l "widget" -g "*.ts" -g "*.tsx"
+
+# Exclude vendor/node_modules (fd-style filtering)
+rg -l "widget" -g "*.ts" -g "!vendor/**" -g "!node_modules/**"
+```
+
+### 7. Debug batch-refactor commands
+
+If a batch command returns 0 results unexpectedly:
+
+```bash
+# 1. Verify rg finds matches directly
+rg -l "pattern" -g "*.ts"
+
+# 2. Check the glob syntax
+# Bad:  --glob "**/*.{ts,tsx}"   (shell may expand braces)
+# Good: --glob "**/*.ts" --glob "**/*.tsx"  (separate globs)
+
+# 3. Run with verbose output
+DEBUG=* bun tools/refactor.ts pattern.replace --pattern widget --glob "**/*.ts"
+```
