@@ -19,6 +19,8 @@ import { getProject, getSymbolAt, getReferences, findSymbols, computeNewName } f
 import {
   createRenameProposal,
   createBatchRenameProposal,
+  createBatchRenameProposalFiltered,
+  checkConflicts,
   filterEditset,
   saveEditset,
   loadEditset,
@@ -52,6 +54,8 @@ Commands:
     --pattern <regex>                     Symbol pattern to match
     --replace <string>                    Replacement string
     --output <file>                       Output file (default: editset.json)
+    --check-conflicts                     Check for naming conflicts (no editset generated)
+    --skip <names>                        Comma-separated symbol names to skip
 
   editset.select <file>                   Filter editset
     --include <refIds>                    Comma-separated refIds to include
@@ -73,8 +77,11 @@ Examples:
   # Find all vault symbols
   refactor.ts symbols.find --pattern vault
 
-  # Create batch rename proposal
-  refactor.ts rename.batch --pattern vault --replace repo --output editset.json
+  # Check for naming conflicts first
+  refactor.ts rename.batch --pattern vault --replace repo --check-conflicts
+
+  # Create batch rename proposal (skipping conflicting symbols)
+  refactor.ts rename.batch --pattern vault --replace repo --skip createVault,Vault --output editset.json
 
   # Preview apply
   refactor.ts editset.apply editset.json --dry-run
@@ -167,23 +174,42 @@ async function main() {
       const pattern = getArg("--pattern")
       const replacement = getArg("--replace")
       const outputFile = getArg("--output") || "editset.json"
+      const checkConflictsFlag = hasFlag("--check-conflicts")
+      const skipNames = getArg("--skip")?.split(",") || []
 
       if (!pattern || !replacement) {
-        error("Usage: rename.batch --pattern <regex> --replace <string> [--output file]")
+        error("Usage: rename.batch --pattern <regex> --replace <string> [--output file] [--check-conflicts] [--skip names]")
       }
 
       const regex = new RegExp(pattern, "i")
-      const symbols = findSymbols(project, regex)
-      console.error(`Found ${symbols.length} symbols matching /${pattern}/i`)
 
-      const editset = createBatchRenameProposal(project, regex, replacement)
+      // Check for conflicts mode
+      if (checkConflictsFlag) {
+        const report = checkConflicts(project, regex, replacement)
+        output(report)
+        break
+      }
+
+      // Normal batch rename (with optional skip)
+      const symbols = findSymbols(project, regex)
+      const skippedCount = skipNames.length > 0 ? symbols.filter((s) => skipNames.includes(s.name)).length : 0
+      console.error(`Found ${symbols.length} symbols matching /${pattern}/i`)
+      if (skippedCount > 0) {
+        console.error(`Skipping ${skippedCount} symbols: ${skipNames.join(", ")}`)
+      }
+
+      const editset =
+        skipNames.length > 0
+          ? createBatchRenameProposalFiltered(project, regex, replacement, skipNames)
+          : createBatchRenameProposal(project, regex, replacement)
       saveEditset(editset, outputFile)
 
       output({
         editsetPath: outputFile,
         refCount: editset.refs.length,
         fileCount: new Set(editset.refs.map((r) => r.file)).size,
-        symbolCount: symbols.length,
+        symbolCount: symbols.length - skippedCount,
+        skippedSymbols: skipNames.length > 0 ? skipNames : undefined,
       })
       break
     }

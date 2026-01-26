@@ -1,7 +1,7 @@
 import { Project, Node } from "ts-morph"
 import { writeFileSync, readFileSync, existsSync } from "fs"
-import type { Editset, Reference, Edit, SymbolMatch } from "./types"
-import { getReferences, findSymbols, computeNewName, computeChecksum, computeRefId, getProject } from "./symbols"
+import type { Editset, Reference, Edit, SymbolMatch, ConflictReport, Conflict, SafeRename } from "./types"
+import { getReferences, findSymbols, findAllSymbols, computeNewName, computeChecksum, computeRefId, getProject } from "./symbols"
 
 /**
  * Create an editset for renaming a single symbol
@@ -133,6 +133,105 @@ export function loadEditset(inputPath: string): Editset {
   return JSON.parse(content) as Editset
 }
 
+/**
+ * Check for naming conflicts before batch rename
+ */
+export function checkConflicts(
+  project: Project,
+  pattern: RegExp,
+  replacement: string
+): ConflictReport {
+  // Get symbols that match the rename pattern
+  const matchingSymbols = findSymbols(project, pattern)
+
+  // Get ALL symbols in the codebase for conflict detection
+  const allSymbols = findAllSymbols(project)
+
+  // Build a map of existing names -> symbolKey
+  const existingNames = new Map<string, string>()
+  for (const sym of allSymbols) {
+    // Only add the first occurrence (in case of duplicates)
+    if (!existingNames.has(sym.name)) {
+      existingNames.set(sym.name, sym.symbolKey)
+    }
+  }
+
+  const conflicts: Conflict[] = []
+  const safe: SafeRename[] = []
+  const seenNames = new Set<string>()
+
+  for (const sym of matchingSymbols) {
+    // Skip if we've already processed a symbol with this name
+    if (seenNames.has(sym.name)) continue
+    seenNames.add(sym.name)
+
+    const newName = computeNewName(sym.name, pattern, replacement)
+    if (newName === sym.name) continue // Skip if no change
+
+    // Check if newName already exists
+    const existingKey = existingNames.get(newName)
+    if (existingKey) {
+      // Conflict: the new name already exists as a different symbol
+      conflicts.push({
+        from: sym.name,
+        to: newName,
+        existingSymbol: existingKey,
+        suggestion: `use --skip ${sym.name} (keep as deprecated API)`,
+      })
+    } else {
+      safe.push({ from: sym.name, to: newName })
+    }
+  }
+
+  return { conflicts, safe }
+}
+
+/**
+ * Create batch rename proposal, optionally skipping certain symbols
+ */
+export function createBatchRenameProposalFiltered(
+  project: Project,
+  pattern: RegExp,
+  replacement: string,
+  skipNames: string[]
+): Editset {
+  const skipSet = new Set(skipNames)
+  const symbols = findSymbols(project, pattern).filter((sym) => !skipSet.has(sym.name))
+
+  const allRefs: Reference[] = []
+  const seenRefIds = new Set<string>()
+
+  for (const sym of symbols) {
+    const newName = computeNewName(sym.name, pattern, replacement)
+    if (newName === sym.name) continue
+
+    const refs = getReferences(project, sym.symbolKey)
+    for (const ref of refs) {
+      if (!seenRefIds.has(ref.refId)) {
+        seenRefIds.add(ref.refId)
+        allRefs.push({
+          ...ref,
+          preview: `${ref.preview} // ${sym.name} → ${newName}`,
+        })
+      }
+    }
+  }
+
+  const id = `rename-batch-${pattern.source}-to-${replacement}-${Date.now()}`
+  const edits = generateBatchEdits(project, symbols, pattern, replacement)
+
+  return {
+    id,
+    operation: "rename",
+    pattern: pattern.source,
+    from: pattern.source,
+    to: replacement,
+    refs: allRefs,
+    edits,
+    createdAt: new Date().toISOString(),
+  }
+}
+
 // Internal helpers
 
 function generateEditsFromRefs(
@@ -185,16 +284,27 @@ function generateBatchEdits(
 ): Edit[] {
   const allEdits: Edit[] = []
   const seenLocations = new Set<string>()
+  const fileContents = new Map<string, string>()
 
   for (const sym of symbols) {
     const newName = computeNewName(sym.name, pattern, replacement)
     if (newName === sym.name) continue
 
+    // Add edit for the symbol DEFINITION itself (not included in references)
+    const defEdit = createDefinitionEdit(project, sym, newName, fileContents)
+    if (defEdit) {
+      const key = `${defEdit.file}:${defEdit.offset}:${defEdit.length}`
+      if (!seenLocations.has(key)) {
+        seenLocations.add(key)
+        allEdits.push(defEdit)
+      }
+    }
+
+    // Add edits for all references
     const refs = getReferences(project, sym.symbolKey)
     const edits = generateEditsFromRefs(project, refs, sym.name, newName)
 
     for (const edit of edits) {
-      // Deduplicate by exact location
       const key = `${edit.file}:${edit.offset}:${edit.length}`
       if (!seenLocations.has(key)) {
         seenLocations.add(key)
@@ -208,4 +318,42 @@ function generateBatchEdits(
     if (a.file !== b.file) return a.file.localeCompare(b.file)
     return b.offset - a.offset
   })
+}
+
+function createDefinitionEdit(
+  project: Project,
+  sym: SymbolMatch,
+  newName: string,
+  fileContents: Map<string, string>
+): Edit | null {
+  // Get file content
+  let content = fileContents.get(sym.file)
+  if (!content) {
+    const sf = project.getSourceFile(sym.file)
+    if (!sf) return null
+    content = sf.getFullText()
+    fileContents.set(sym.file, content)
+  }
+
+  // Calculate byte offset from line (sym.line is 1-indexed)
+  const lines = content.split("\n")
+  let offset = 0
+  for (let i = 0; i < sym.line - 1 && i < lines.length; i++) {
+    offset += (lines[i]?.length ?? 0) + 1 // +1 for newline
+  }
+
+  // Find the symbol name within the line
+  const lineContent = lines[sym.line - 1]
+  if (!lineContent) return null
+  const symIndex = lineContent.indexOf(sym.name)
+  if (symIndex === -1) return null
+
+  offset += symIndex
+
+  return {
+    file: sym.file,
+    offset,
+    length: sym.name.length,
+    replacement: newName,
+  }
 }

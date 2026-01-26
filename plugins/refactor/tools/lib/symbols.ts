@@ -97,6 +97,13 @@ export function getReferences(project: Project, symbolKey: string): Reference[] 
 }
 
 /**
+ * Find ALL symbols in the codebase (for conflict detection)
+ */
+export function findAllSymbols(project: Project): SymbolMatch[] {
+  return findSymbols(project, /.*/) // Match everything
+}
+
+/**
  * Find all symbols matching a pattern
  */
 export function findSymbols(project: Project, pattern: RegExp): SymbolMatch[] {
@@ -137,11 +144,47 @@ export function findSymbols(project: Project, pattern: RegExp): SymbolMatch[] {
       }
     }
 
-    // Variables
-    for (const varDecl of sourceFile.getVariableDeclarations()) {
-      if (pattern.test(varDecl.getName())) {
-        addMatch(varDecl.getNameNode(), "variable")
+    // Variables and parameters (including destructuring patterns)
+    sourceFile.forEachDescendant((node) => {
+      // Variable declarations: const foo = ... or const { foo } = ...
+      if (Node.isVariableDeclaration(node)) {
+        const nameNode = node.getNameNode()
+        if (Node.isIdentifier(nameNode)) {
+          const name = nameNode.getText()
+          if (pattern.test(name)) {
+            addMatch(nameNode, "variable")
+          }
+        } else if (Node.isObjectBindingPattern(nameNode) || Node.isArrayBindingPattern(nameNode)) {
+          addBindingPatternMatches(nameNode)
+        }
       }
+      // Function/arrow parameters: (foo) => ... or ({ foo }) => ...
+      else if (Node.isParameterDeclaration(node)) {
+        const nameNode = node.getNameNode()
+        if (Node.isIdentifier(nameNode)) {
+          const name = nameNode.getText()
+          if (pattern.test(name)) {
+            addMatch(nameNode, "parameter")
+          }
+        } else if (Node.isObjectBindingPattern(nameNode) || Node.isArrayBindingPattern(nameNode)) {
+          addBindingPatternMatches(nameNode)
+        }
+      }
+    })
+
+    // Helper to extract identifiers from destructuring patterns
+    function addBindingPatternMatches(bindingPattern: Node) {
+      bindingPattern.forEachDescendant((bindingNode) => {
+        if (Node.isBindingElement(bindingNode)) {
+          const bindingName = bindingNode.getNameNode()
+          if (Node.isIdentifier(bindingName)) {
+            const name = bindingName.getText()
+            if (pattern.test(name)) {
+              addMatch(bindingName, "variable")
+            }
+          }
+        }
+      })
     }
 
     // Classes

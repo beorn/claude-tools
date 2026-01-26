@@ -85,3 +85,24 @@ export type ApplyOutput = z.infer<typeof ApplyOutput>
 
 export const SymbolsFindOutput = z.array(SymbolMatch)
 export type SymbolsFindOutput = z.infer<typeof SymbolsFindOutput>
+
+// Conflict detection for batch renames
+export const Conflict = z.object({
+  from: z.string(), // original name
+  to: z.string(), // proposed new name
+  existingSymbol: z.string(), // symbolKey of conflicting existing symbol
+  suggestion: z.string(), // suggested resolution
+})
+export type Conflict = z.infer<typeof Conflict>
+
+export const SafeRename = z.object({
+  from: z.string(),
+  to: z.string(),
+})
+export type SafeRename = z.infer<typeof SafeRename>
+
+export const ConflictReport = z.object({
+  conflicts: z.array(Conflict),
+  safe: z.array(SafeRename),
+})
+export type ConflictReport = z.infer<typeof ConflictReport>
