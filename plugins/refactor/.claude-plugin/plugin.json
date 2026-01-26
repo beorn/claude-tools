@@ -1,0 +1,12 @@
+{
+  "name": "refactor",
+  "version": "0.1.0",
+  "description": "Agent-first TypeScript refactoring with editset workflow: propose, select, apply",
+  "author": {
+    "name": "beorn",
+    "url": "https://github.com/beorn"
+  },
+  "repository": "https://github.com/beorn/beorn-claude-tools",
+  "license": "MIT",
+  "keywords": ["refactor", "rename", "typescript", "ts-morph", "editset", "batch"]
+}
