@@ -24,6 +24,49 @@ Use this skill when the user wants to make changes across multiple files:
 
 ---
 
+## Why Use Batch Refactor (Not Manual Edit)
+
+**ALWAYS use this tool instead of manual editing when:**
+
+| Situation | Manual Edits | Batch Refactor |
+|-----------|--------------|----------------|
+| Rename a function used in 47 files | 47 separate Edit calls | 1 command |
+| Rename parameter in destructuring patterns | Miss edge cases | Catches all patterns |
+| Update terminology across codebase | Hours of work | Minutes |
+| Rename file + update all imports | Break builds | Atomic, safe |
+
+### Example: Why Manual Editing Fails
+
+**Task**: Rename `createVault` to `createRepo`
+
+**Manual approach (WRONG)**:
+```bash
+# You'd miss these patterns:
+const { createVault } = api          # destructuring
+const init = createVault             # assignment
+type Factory = typeof createVault    # type reference
+async ({ createVault }: Deps) => {}  # parameter destructuring
+```
+
+**Batch refactor approach (CORRECT)**:
+```bash
+bun tools/refactor.ts rename.batch --pattern createVault --replace createRepo --output edits.json
+bun tools/refactor.ts editset.apply edits.json
+# Finds ALL 127 references including destructuring, types, re-exports
+```
+
+### Quick Reference: When to Use Each Command
+
+| You want to... | Command | Example |
+|----------------|---------|---------|
+| Rename TypeScript function/variable | `rename.batch` | `--pattern createVault --replace createRepo` |
+| Rename TypeScript type/interface | `rename.batch` | `--pattern VaultConfig --replace RepoConfig` |
+| Rename files | `file.rename` | `--pattern vault --replace repo --glob "**/*.ts"` |
+| Update text in markdown | `pattern.replace --backend ripgrep` | `--pattern vault --replace repo --glob "**/*.md"` |
+| Full terminology migration | `migrate` | `--from vault --to repo` |
+
+---
+
 ## Comprehensive Migration Workflow
 
 For large terminology migrations (e.g., "rename vault to repo"), follow this phased approach:
@@ -33,7 +76,7 @@ For large terminology migrations (e.g., "rename vault to repo"), follow this pha
 **CRITICAL: Analyze ALL conflicts before making ANY changes.**
 
 ```bash
-cd vendor/beorn-claude-tools/plugins/batch
+# Run from the batch plugin directory
 
 # 1. Check file name conflicts
 bun tools/refactor.ts file.rename --pattern vault --replace repo --glob "**/*.ts" --check-conflicts
@@ -160,6 +203,15 @@ bun run test:all
 | Go, Rust, Python structural patterns | .go, .rs, .py | ast-grep | `pattern.replace` |
 | JSON/YAML values | .json, .yaml | ast-grep | `pattern.replace` |
 | Text/markdown/comments | .md, .txt, any | ripgrep | `pattern.replace` |
+| Wiki links only | .md | wikilink | `wikilink.rename` |
+| package.json paths | package.json | package-json | `package.rename` |
+| tsconfig.json paths | tsconfig*.json | tsconfig-json | `tsconfig.rename` |
+
+**`file.rename` auto-detects file type** and updates references:
+- `.ts/.tsx/.js/.jsx` → updates import paths
+- `.md/.markdown/.mdx` → updates `[[wikilinks]]` (Obsidian, Foam, etc.)
+- `package.json` → updates exports, main, types, bin paths
+- `tsconfig.json` → updates paths mappings, includes, references
 
 **CRITICAL for TypeScript**: Always use ts-morph (via `rename.batch`) for identifiers. It handles destructuring, arrow function params, and nested scopes that text-based tools miss.
 
@@ -634,3 +686,527 @@ interface TestEnv { vaultDir: string }  // property definition
 6. **Trust checksums** - editset won't apply to modified files
 7. **Vendor submodules** - commit and push separately, then update reference
 8. **Be aggressive** - apply all matches, let tests catch mistakes
+
+---
+
+## LLM Patch Workflow
+
+Editsets now include enriched context fields that allow an LLM to review and selectively modify replacements before applying. This enables intelligent, context-aware refactoring decisions.
+
+### Enriched Reference Fields
+
+Each reference in an editset includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `kind` | `"call"` \| `"decl"` \| `"type"` \| `"string"` \| `"comment"` | What kind of reference this is |
+| `scope` | `string \| null` | Enclosing function/class name, or null for module-level |
+| `ctx` | `string[]` | Array of context lines with `►` marker on the matching line |
+| `replace` | `string \| null` | `null` to skip this reference, `string` for custom replacement |
+
+### Workflow
+
+```bash
+# Run from the batch plugin directory
+
+# 1. Generate editset with enriched context
+bun tools/refactor.ts rename.batch --pattern vault --replace repo -o editset.json
+
+# 2. LLM reviews the editset and patches specific references
+#    - Set replace to null to skip a reference
+#    - Set replace to a custom string for non-standard replacement
+bun tools/refactor.ts editset.patch editset.json <<'EOF'
+{ "b2c3": "Repository", "c3d4": null }
+EOF
+
+# 3. Apply the patched editset
+bun tools/refactor.ts editset.apply editset.json
+```
+
+### Example: Selective Replacement
+
+Given an editset with these references:
+
+```json
+{
+  "refs": [
+    { "id": "a1b2", "kind": "decl", "scope": "createVault", "replace": "repo" },
+    { "id": "b2c3", "kind": "type", "scope": null, "replace": "repo" },
+    { "id": "c3d4", "kind": "comment", "scope": null, "replace": "repo" }
+  ]
+}
+```
+
+An LLM might decide:
+- Keep `a1b2` as-is (standard replacement)
+- Change `b2c3` to `"Repository"` (capitalize for type name)
+- Set `c3d4` to `null` (skip comment, it refers to external Obsidian vault)
+
+```bash
+bun tools/refactor.ts editset.patch editset.json <<'EOF'
+{ "b2c3": "Repository", "c3d4": null }
+EOF
+```
+
+### Context Lines
+
+The `ctx` field shows surrounding lines with the match marked:
+
+```json
+{
+  "ctx": [
+    "  // Create a new vault for the user",
+    "► const vault = createVault(config)",
+    "  return vault"
+  ]
+}
+```
+
+This helps LLMs understand whether a reference is:
+- Internal code (safe to rename)
+- External reference (may need to preserve)
+- Documentation (may need different wording)
+
+---
+
+## Migrate Command
+
+The `migrate` command orchestrates a full terminology migration in phases:
+
+```bash
+# Run from the batch plugin directory
+
+# Preview what would be migrated
+bun tools/refactor.ts migrate --from vault --to repo --dry-run
+
+# Run migration (creates editsets in .editsets/ directory)
+bun tools/refactor.ts migrate --from vault --to repo
+
+# Custom output directory
+bun tools/refactor.ts migrate --from vault --to repo --output ./my-editsets
+
+# Custom file glob
+bun tools/refactor.ts migrate --from vault --to repo --glob "**/*.{ts,tsx,md}"
+```
+
+### What Migrate Does
+
+| Phase | Description | Output File |
+|-------|-------------|-------------|
+| 1. File renames | Rename files containing pattern | `01-file-renames.json` |
+| 2. Symbol renames | TypeScript identifiers via ts-morph | `02-symbol-renames.json` |
+| 3. Text patterns | Comments, strings via ripgrep | `03-text-patterns.json` |
+
+After running, review each editset and apply:
+
+```bash
+# Review and apply each phase
+bun tools/refactor.ts file.apply .editsets/01-file-renames.json --dry-run
+bun tools/refactor.ts file.apply .editsets/01-file-renames.json
+
+bun tools/refactor.ts editset.apply .editsets/02-symbol-renames.json --dry-run
+bun tools/refactor.ts editset.apply .editsets/02-symbol-renames.json
+
+bun tools/refactor.ts editset.apply .editsets/03-text-patterns.json --dry-run
+bun tools/refactor.ts editset.apply .editsets/03-text-patterns.json
+```
+
+### Migrate Command Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--from <pattern>` | Pattern to match (required) | - |
+| `--to <replacement>` | Replacement string (required) | - |
+| `--glob <glob>` | File glob filter | `**/*.{ts,tsx}` |
+| `--dry-run` | Preview without creating editsets | false |
+| `--output <dir>` | Output directory for editsets | `.editsets`|
+
+---
+
+## Enriched Editset JSON Format
+
+When an LLM reviews an editset, it sees enriched context for each reference:
+
+```json
+{
+  "id": "rename-vault-to-repo-1706123456789",
+  "operation": "rename",
+  "from": "vault",
+  "to": "repo",
+  "refs": [
+    {
+      "refId": "a1b2c3d4",
+      "file": "src/storage.ts",
+      "line": 45,
+      "range": [45, 12, 45, 17],
+      "kind": "call",
+      "scope": "initStorage",
+      "ctx": [
+        "  function initStorage() {",
+        "► const root = createVault(config);",
+        "  return root;"
+      ],
+      "replace": "repo",
+      "preview": "const root = createVault(config);",
+      "checksum": "abc123...",
+      "selected": true
+    },
+    {
+      "refId": "b2c3d4e5",
+      "file": "src/errors.ts",
+      "line": 12,
+      "range": [12, 25, 12, 30],
+      "kind": "string",
+      "scope": "errorHandler",
+      "ctx": [
+        "► throw new Error(\"vault not found\");"
+      ],
+      "replace": "repo",
+      "preview": "throw new Error(\"vault not found\");",
+      "checksum": "def456...",
+      "selected": true
+    }
+  ],
+  "edits": [ /* ... byte-level edits */ ],
+  "createdAt": "2024-01-24T12:00:00.000Z"
+}
+```
+
+### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `refId` | string | Stable identifier for this reference |
+| `kind` | `"call"` \| `"decl"` \| `"type"` \| `"string"` \| `"comment"` | Semantic kind |
+| `scope` | string \| null | Enclosing function/class, or null for module-level |
+| `ctx` | string[] | Context lines with `►` marker on match line |
+| `replace` | string \| null | Replacement text, or null to skip |
+| `line` | number | 1-indexed line number |
+| `range` | [number, number, number, number] | [startLine, startCol, endLine, endCol] |
+
+---
+
+## editset.patch Command
+
+Apply LLM-generated patches to editsets via stdin (heredoc):
+
+```bash
+# Minimal patch format: refId → replacement or null
+bun tools/refactor.ts editset.patch editset.json <<'EOF'
+{
+  "b2c3d4e5": "repository",
+  "c3d4e5f6": null
+}
+EOF
+
+# Or pipe from a file
+cat my-patch.json | bun tools/refactor.ts editset.patch editset.json
+
+# Output to different file
+bun tools/refactor.ts editset.patch editset.json --output patched.json <<'EOF'
+{ "b2c3": null }
+EOF
+```
+
+### Patch Format
+
+The patch is a simple JSON object mapping refIds to actions:
+
+```json
+{
+  "refId1": "custom replacement",  // Use this replacement instead of default
+  "refId2": null,                   // Skip this reference
+  // refId3 not mentioned           // Apply with default replacement
+}
+```
+
+| Patch Value | Action |
+|-------------|--------|
+| `"string"` | Use this replacement text |
+| `null` | Skip this reference (don't apply) |
+| *(not in patch)* | Apply with default `to` replacement |
+
+### Full Editset Patch
+
+You can also pass a full editset with modified `replace` fields:
+
+```json
+{
+  "refs": [
+    { "refId": "a1b2", "replace": "Repository" },
+    { "refId": "b2c3", "replace": null }
+  ]
+}
+```
+
+The patch command extracts `refId` and `replace` from each ref.
+
+---
+
+## More Examples: Edge Cases Manual Editing Misses
+
+### Example 9: Destructuring Parameters (ts-morph REQUIRED)
+
+**Scenario**: Rename `vaultPath` to `repoPath` — appears in destructuring patterns
+
+**Manual grep would find:**
+```typescript
+const vaultPath = "/path/to/vault"  // ✓ obvious
+```
+
+**But MISS these (ts-morph catches them):**
+```typescript
+// Destructuring in function parameter
+export function init({ vaultPath, config }: Options) {
+  return load(vaultPath)
+}
+
+// Nested destructuring
+const { paths: { vaultPath } } = config
+
+// Arrow function parameter destructuring
+const handler = ({ vaultPath }: Ctx) => vaultPath
+
+// Object shorthand
+return { vaultPath }  // property AND value both renamed
+```
+
+**Command:**
+```bash
+bun tools/refactor.ts rename.batch --pattern vaultPath --replace repoPath --output edits.json
+bun tools/refactor.ts editset.apply edits.json
+# All 47 occurrences updated atomically
+```
+
+---
+
+### Example 10: Re-exports and Barrel Files (ts-morph REQUIRED)
+
+**Scenario**: Rename `Widget` to `Gadget` — used in index.ts re-exports
+
+**Manual editing misses:**
+```typescript
+// src/index.ts - barrel file
+export { Widget } from "./widget"
+export type { Widget, WidgetConfig } from "./widget"
+
+// src/components/index.ts - nested barrel
+export * from "./Widget"
+export { Widget as DefaultWidget } from "./Widget"
+```
+
+**ts-morph finds ALL of these:**
+```bash
+bun tools/refactor.ts rename.batch --pattern Widget --replace Gadget --output edits.json
+# Found: 89 references across 23 files including all re-exports
+```
+
+---
+
+### Example 11: Type-Only Imports
+
+**Scenario**: Rename `UserService` interface — used in type-only imports
+
+**Manual editing risks:**
+```typescript
+// Type-only import - easy to miss with grep
+import type { UserService } from "./services"
+
+// Inline type import
+const fn = (service: import("./services").UserService) => {}
+
+// Generic constraints
+function process<T extends UserService>(svc: T) {}
+```
+
+**ts-morph finds all patterns:**
+```bash
+bun tools/refactor.ts rename.batch --pattern UserService --replace AccountService --check-conflicts
+bun tools/refactor.ts rename.batch --pattern UserService --replace AccountService --output edits.json
+```
+
+---
+
+### Example 12: JSDoc References
+
+**Scenario**: Rename `parseConfig` — referenced in JSDoc comments
+
+```typescript
+/**
+ * @see parseConfig for config format
+ * @param {ReturnType<typeof parseConfig>} config
+ */
+function initApp(config) {}
+```
+
+**ripgrep backend catches JSDoc:**
+```bash
+bun tools/refactor.ts pattern.replace \
+  --pattern parseConfig \
+  --replace loadConfig \
+  --glob "**/*.{ts,js}" \
+  --backend ripgrep \
+  --output jsdoc-updates.json
+```
+
+---
+
+### Example 13: Dynamic Imports
+
+**Scenario**: Rename file `user-api.ts` to `account-api.ts` — dynamic imports exist
+
+```typescript
+// Static import (caught by ts-morph file.rename)
+import { getUser } from "./user-api"
+
+// Dynamic import (caught by ripgrep pattern.replace)
+const api = await import("./user-api")
+const { handler } = await import(`./user-api`)
+```
+
+**Two-step approach:**
+```bash
+# 1. Rename file + static imports
+bun tools/refactor.ts file.rename --pattern user-api --replace account-api --output files.json
+bun tools/refactor.ts file.apply files.json
+
+# 2. Catch dynamic imports
+bun tools/refactor.ts pattern.replace \
+  --pattern "user-api" \
+  --replace "account-api" \
+  --glob "**/*.ts" \
+  --backend ripgrep \
+  --output dynamic.json
+bun tools/refactor.ts editset.apply dynamic.json
+```
+
+---
+
+### Example 14: Test Mocks and Fixtures
+
+**Scenario**: Rename `createVault` — but test mocks use it too
+
+```typescript
+// src/vault.ts
+export function createVault() {}
+
+// tests/vault.test.ts
+vi.mock("../vault", () => ({
+  createVault: vi.fn(),  // Mock uses same name
+}))
+
+// tests/fixtures/vault-fixture.ts
+export const mockCreateVault = () => {}  // Compound identifier
+```
+
+**ts-morph renames ALL including mocks:**
+```bash
+bun tools/refactor.ts rename.batch --pattern createVault --replace createRepo --output edits.json
+# Found in: src/vault.ts, 12 test files, 3 fixture files
+```
+
+---
+
+### Example 15: Partial Word Match with Case Preservation
+
+**Scenario**: Rename all `vault` occurrences — different casings exist
+
+```typescript
+const vault = {}           // lowercase
+const Vault = {}           // PascalCase
+const VAULT_PATH = ""      // SCREAMING_CASE
+const vaultConfig = {}     // camelCase compound
+class VaultManager {}      // PascalCase compound
+const VAULT_OPTIONS = {}   // SCREAMING compound
+```
+
+**Automatic case preservation:**
+```bash
+bun tools/refactor.ts rename.batch --pattern vault --replace repo --output edits.json
+```
+
+**Result:**
+```typescript
+const repo = {}            // lowercase preserved
+const Repo = {}            // PascalCase preserved
+const REPO_PATH = ""       // SCREAMING_CASE preserved
+const repoConfig = {}      // camelCase compound
+class RepoManager {}       // PascalCase compound
+const REPO_OPTIONS = {}    // SCREAMING compound
+```
+
+---
+
+### Example 16: Multi-Package Monorepo
+
+**Scenario**: Rename across multiple packages in a monorepo
+
+```
+packages/
+  core/src/vault.ts
+  cli/src/commands/vault.ts
+  tui/src/views/vault-view.tsx
+  storage/src/vault-loader.ts
+```
+
+**Single command handles all:**
+```bash
+bun tools/refactor.ts migrate --from vault --to repo --glob "packages/**/*.{ts,tsx}"
+
+# Creates editsets in .editsets/:
+# - 01-file-renames.json (4 files)
+# - 02-symbol-renames.json (234 symbols)
+# - 03-text-patterns.json (89 text occurrences)
+```
+
+---
+
+### Example 17: Rollback Safety with Checksums
+
+**Scenario**: Someone edited a file after you created the editset
+
+```bash
+# Create editset
+bun tools/refactor.ts rename.batch --pattern Widget --replace Gadget --output edits.json
+
+# ... time passes, teammate edits src/widget.ts ...
+
+# Apply fails safely with drift detection
+bun tools/refactor.ts editset.apply edits.json
+# Error: Drift detected in src/widget.ts (checksum mismatch)
+# Skipped: 3 edits in src/widget.ts
+# Applied: 45 edits in other files
+```
+
+The editset NEVER corrupts files — if the file changed, it skips that file.
+
+---
+
+## Decision Tree: Which Command to Use
+
+```
+Is this a terminology migration (file names + code + docs)?
+├── YES → `migrate --from X --to Y`
+└── NO
+    ├── Renaming files?
+    │   └── YES → `file.rename --pattern X --replace Y`
+    ├── Renaming TypeScript identifiers?
+    │   └── YES → `rename.batch --pattern X --replace Y`
+    ├── Updating Go/Rust/Python structural patterns?
+    │   └── YES → `pattern.replace --backend ast-grep`
+    └── Updating text/markdown/comments?
+        └── YES → `pattern.replace --backend ripgrep`
+```
+
+---
+
+## Performance Comparison
+
+| Task | Manual Edits | Batch Refactor |
+|------|--------------|----------------|
+| Rename function (50 refs) | ~50 Edit calls | 2 commands |
+| Rename file + imports | Risk broken build | Atomic update |
+| Full terminology migration | Hours | Minutes |
+| Rollback on error | Manual git restore | Automatic (checksums) |
+
+**Rule of thumb**: If you'd make more than 5 edits, use batch refactor

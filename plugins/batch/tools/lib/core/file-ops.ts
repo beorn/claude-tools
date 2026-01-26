@@ -1,18 +1,26 @@
 /**
- * file-ops.ts - Batch file rename operations with import path updates
+ * file-ops.ts - Batch file rename operations with import/link updates
  *
  * Provides:
  *   - findFilesToRename: Find files matching a glob pattern
  *   - checkFileConflicts: Check for naming conflicts
- *   - createFileRenameProposal: Create editset with file ops + import updates
- *   - applyFileRenames: Execute file renames and import updates
+ *   - createFileRenameProposal: Create editset with file ops + link updates
+ *   - applyFileRenames: Execute file renames and link updates
+ *
+ * Supports:
+ *   - TypeScript/JS: Updates import paths
+ *   - Markdown: Updates [[wikilinks]] (Obsidian, Foam, etc.)
  */
 
 import { createHash } from "crypto"
 import fs from "fs"
 import path from "path"
 import { Glob } from "bun"
+import { Project } from "ts-morph"
 import type { FileOp, FileEditset, FileConflict, FileRenameReport, Edit } from "./types"
+import { findLinksToFile, parseWikiLinks, generateReplacement } from "../backends/wikilink"
+import { findPackageJsonEdits } from "../backends/package-json"
+import { findTsConfigEdits } from "../backends/tsconfig-json"
 
 /**
  * Compute checksum for a file
@@ -145,43 +153,319 @@ export function checkFileConflicts(fileOps: FileOp[], cwd: string = process.cwd(
 /**
  * Find all import statements that reference the files being renamed
  * Returns edit operations to update those imports
+ *
+ * Uses ts-morph to accurately parse TypeScript/JavaScript files and find:
+ * - import declarations: import { foo } from "./vault"
+ * - export declarations: export { foo } from "./vault"
+ * - dynamic imports: await import("./vault")
+ * - require calls: require("./vault")
  */
 export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()): Edit[] {
-  // This will be enhanced to use ts-morph for accurate import detection
-  // For now, use ripgrep-style text search as a simple fallback
+  if (fileOps.length === 0) return []
+
+  // Only process TypeScript/JavaScript file renames
+  const tsFileOps = fileOps.filter((op) => /\.(ts|tsx|js|jsx)$/.test(op.oldPath))
+  if (tsFileOps.length === 0) return []
+
+  // Try to find tsconfig.json, fall back to scanning files directly
+  const tsconfigPath = path.join(cwd, "tsconfig.json")
+  const project = fs.existsSync(tsconfigPath)
+    ? new Project({ tsConfigFilePath: tsconfigPath })
+    : new Project({ compilerOptions: { allowJs: true } })
+
+  // If no tsconfig, add source files manually
+  if (!fs.existsSync(tsconfigPath)) {
+    project.addSourceFilesAtPaths(path.join(cwd, "**/*.{ts,tsx,js,jsx}"))
+  }
+
+  // Build a map of old absolute paths -> FileOp for quick lookup
+  const oldPathToOp = new Map<string, FileOp>()
+  for (const op of tsFileOps) {
+    const absOldPath = path.isAbsolute(op.oldPath) ? op.oldPath : path.join(cwd, op.oldPath)
+    oldPathToOp.set(absOldPath, op)
+    // Also add without extension for module resolution
+    oldPathToOp.set(absOldPath.replace(/\.(ts|tsx|js|jsx)$/, ""), op)
+  }
 
   const edits: Edit[] = []
 
-  for (const op of fileOps) {
-    // Get the module specifier (without extension for ts/js)
-    const oldExt = path.extname(op.oldPath)
-    const newExt = path.extname(op.newPath)
-    const oldSpecifier = op.oldPath.replace(/\.(ts|tsx|js|jsx)$/, "")
-    const newSpecifier = op.newPath.replace(/\.(ts|tsx|js|jsx)$/, "")
+  // Scan all source files for imports
+  for (const sourceFile of project.getSourceFiles()) {
+    const sourceFilePath = sourceFile.getFilePath()
+    // Skip files in node_modules
+    if (sourceFilePath.includes("node_modules")) continue
 
-    // Also handle basename-only imports (e.g., import from "./vault")
-    const oldBasename = path.basename(op.oldPath).replace(/\.(ts|tsx|js|jsx)$/, "")
-    const newBasename = path.basename(op.newPath).replace(/\.(ts|tsx|js|jsx)$/, "")
+    const sourceFileDir = path.dirname(sourceFilePath)
+    const fileContent = sourceFile.getFullText()
 
-    // Search for import statements containing the old path
-    // This is a simplified approach - the full implementation will use ts-morph
-    const searchPatterns = [
-      `from ["'].*${escapeRegex(oldBasename)}["']`,
-      `from ["'].*${escapeRegex(oldSpecifier)}["']`,
-      `require\\(["'].*${escapeRegex(oldBasename)}["']\\)`,
-      `import\\(["'].*${escapeRegex(oldBasename)}["']\\)`,
-    ]
+    // Process import declarations: import { x } from "./foo"
+    for (const importDecl of sourceFile.getImportDeclarations()) {
+      const moduleSpecifier = importDecl.getModuleSpecifierValue()
+      const edit = createImportEdit(
+        sourceFilePath,
+        sourceFileDir,
+        moduleSpecifier,
+        importDecl.getModuleSpecifier(),
+        fileContent,
+        oldPathToOp,
+        cwd
+      )
+      if (edit) edits.push(edit)
+    }
 
-    // For now, we'll generate placeholder edits
-    // The actual implementation will scan TypeScript files for imports
-    console.error(`[file-ops] Would search for imports of ${oldBasename} -> ${newBasename}`)
+    // Process export declarations: export { x } from "./foo"
+    for (const exportDecl of sourceFile.getExportDeclarations()) {
+      const moduleSpecifier = exportDecl.getModuleSpecifierValue()
+      if (!moduleSpecifier) continue // export { x } without from clause
+
+      const edit = createImportEdit(
+        sourceFilePath,
+        sourceFileDir,
+        moduleSpecifier,
+        exportDecl.getModuleSpecifier()!,
+        fileContent,
+        oldPathToOp,
+        cwd
+      )
+      if (edit) edits.push(edit)
+    }
+
+    // Process dynamic imports and require calls via descendant traversal
+    sourceFile.forEachDescendant((node) => {
+      // Dynamic import: import("./foo") or require("./foo")
+      if (node.getKindName() === "CallExpression") {
+        const text = node.getText()
+        // Check for import() or require() calls
+        if (text.startsWith("import(") || text.startsWith("require(")) {
+          // Extract the module specifier from the call
+          const match = text.match(/^(?:import|require)\s*\(\s*(['"`])(.+?)\1/)
+          if (match) {
+            const [, quote, moduleSpecifier] = match
+            // Find the position of the string literal within the call
+            const callStart = node.getStart()
+            const literalOffset = text.indexOf(quote)
+            const start = callStart + literalOffset
+            const end = start + quote.length + moduleSpecifier.length + quote.length
+
+            const edit = createImportEditFromStringLiteral(
+              sourceFilePath,
+              sourceFileDir,
+              moduleSpecifier,
+              start,
+              end,
+              fileContent,
+              oldPathToOp,
+              cwd
+            )
+            if (edit) edits.push(edit)
+          }
+        }
+      }
+    })
   }
 
-  return edits
+  // Sort by file then offset descending (for safe application)
+  return edits.sort((a, b) => {
+    if (a.file !== b.file) return a.file.localeCompare(b.file)
+    return b.offset - a.offset
+  })
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+/**
+ * Create an edit for an import/export module specifier
+ */
+function createImportEdit(
+  sourceFilePath: string,
+  sourceFileDir: string,
+  moduleSpecifier: string,
+  specifierNode: { getStart(): number; getEnd(): number },
+  fileContent: string,
+  oldPathToOp: Map<string, FileOp>,
+  cwd: string
+): Edit | null {
+  // Only handle relative imports
+  if (!moduleSpecifier.startsWith(".")) return null
+
+  // Resolve the import to an absolute path
+  const resolvedPath = resolveModulePath(sourceFileDir, moduleSpecifier)
+
+  // Check if this import points to a renamed file
+  const op = oldPathToOp.get(resolvedPath) || oldPathToOp.get(resolvedPath.replace(/\.(ts|tsx|js|jsx)$/, ""))
+  if (!op) return null
+
+  // Calculate the new relative path from the importing file to the new location
+  const absNewPath = path.isAbsolute(op.newPath) ? op.newPath : path.join(cwd, op.newPath)
+  const newRelativePath = computeNewRelativePath(sourceFileDir, absNewPath, moduleSpecifier)
+
+  // The specifier node includes the quotes, so we replace the whole thing
+  const start = specifierNode.getStart()
+  const end = specifierNode.getEnd()
+
+  // Determine quote style from original
+  const originalQuote = fileContent[start]
+  const newSpecifier = `${originalQuote}${newRelativePath}${originalQuote}`
+
+  // Convert to relative path for the edit
+  const relativeFilePath = path.relative(cwd, sourceFilePath)
+
+  return {
+    file: relativeFilePath,
+    offset: start,
+    length: end - start,
+    replacement: newSpecifier,
+  }
+}
+
+/**
+ * Create an edit for a string literal (dynamic import or require)
+ */
+function createImportEditFromStringLiteral(
+  sourceFilePath: string,
+  sourceFileDir: string,
+  moduleSpecifier: string,
+  start: number,
+  end: number,
+  fileContent: string,
+  oldPathToOp: Map<string, FileOp>,
+  cwd: string
+): Edit | null {
+  // Only handle relative imports
+  if (!moduleSpecifier.startsWith(".")) return null
+
+  // Resolve the import to an absolute path
+  const resolvedPath = resolveModulePath(sourceFileDir, moduleSpecifier)
+
+  // Check if this import points to a renamed file
+  const op = oldPathToOp.get(resolvedPath) || oldPathToOp.get(resolvedPath.replace(/\.(ts|tsx|js|jsx)$/, ""))
+  if (!op) return null
+
+  // Calculate the new relative path
+  const absNewPath = path.isAbsolute(op.newPath) ? op.newPath : path.join(cwd, op.newPath)
+  const newRelativePath = computeNewRelativePath(sourceFileDir, absNewPath, moduleSpecifier)
+
+  // Determine quote style from original
+  const originalQuote = fileContent[start]
+  const newSpecifier = `${originalQuote}${newRelativePath}${originalQuote}`
+
+  // Convert to relative path for the edit
+  const relativeFilePath = path.relative(cwd, sourceFilePath)
+
+  return {
+    file: relativeFilePath,
+    offset: start,
+    length: end - start,
+    replacement: newSpecifier,
+  }
+}
+
+/**
+ * Resolve a module specifier to an absolute path
+ * Handles: ./foo, ./foo.ts, ../foo, ./foo/index
+ */
+function resolveModulePath(fromDir: string, moduleSpecifier: string): string {
+  const resolved = path.resolve(fromDir, moduleSpecifier)
+
+  // Try with common extensions
+  const extensions = [".ts", ".tsx", ".js", ".jsx", ""]
+  for (const ext of extensions) {
+    const withExt = resolved + ext
+    if (fs.existsSync(withExt)) return withExt
+  }
+
+  // Try index files
+  for (const ext of [".ts", ".tsx", ".js", ".jsx"]) {
+    const indexPath = path.join(resolved, `index${ext}`)
+    if (fs.existsSync(indexPath)) return indexPath
+  }
+
+  return resolved
+}
+
+/**
+ * Compute the new relative path from an importing file to the renamed file
+ * Preserves the original import style (with/without extension, with/without index)
+ */
+function computeNewRelativePath(fromDir: string, toAbsPath: string, originalSpecifier: string): string {
+  // Get relative path from importing file's directory to new file
+  let relativePath = path.relative(fromDir, toAbsPath)
+
+  // Ensure it starts with ./ or ../
+  if (!relativePath.startsWith(".")) {
+    relativePath = "./" + relativePath
+  }
+
+  // Preserve original style: with or without extension
+  const hadExtension = /\.(ts|tsx|js|jsx)$/.test(originalSpecifier)
+  if (!hadExtension) {
+    relativePath = relativePath.replace(/\.(ts|tsx|js|jsx)$/, "")
+  }
+
+  // Preserve index handling: ./foo/index -> ./foo
+  const hadIndex = originalSpecifier.endsWith("/index") || originalSpecifier.endsWith("/index.ts")
+  if (!hadIndex && relativePath.endsWith("/index")) {
+    relativePath = relativePath.replace(/\/index$/, "")
+  }
+
+  // Normalize path separators for the platform
+  return relativePath.split(path.sep).join("/")
+}
+
+/**
+ * Find all wikilinks that reference the files being renamed
+ * Returns edit operations to update those links
+ *
+ * Supports: [[note]], [[note|alias]], [[note#heading]], ![[embed]]
+ */
+export function findWikilinkEdits(fileOps: FileOp[], cwd: string = process.cwd()): Edit[] {
+  const edits: Edit[] = []
+
+  for (const op of fileOps) {
+    // Only process markdown files
+    const ext = path.extname(op.oldPath).toLowerCase()
+    if (![".md", ".markdown", ".mdx"].includes(ext)) continue
+
+    const oldName = path.basename(op.oldPath).replace(/\.(md|markdown|mdx)$/i, "")
+    const newName = path.basename(op.newPath).replace(/\.(md|markdown|mdx)$/i, "")
+
+    // Find all files that link to this one
+    const refs = findLinksToFile(op.oldPath, cwd, "**/*.md")
+
+    for (const ref of refs) {
+      const filePath = path.isAbsolute(ref.file) ? ref.file : path.join(cwd, ref.file)
+      if (!fs.existsSync(filePath)) continue
+
+      const content = fs.readFileSync(filePath, "utf-8")
+      const links = parseWikiLinks(content)
+
+      // Find links that point to the old file
+      for (const link of links) {
+        const linkTarget = link.target.toLowerCase()
+        if (linkTarget === oldName.toLowerCase() || linkTarget.endsWith("/" + oldName.toLowerCase())) {
+          // Determine new target (preserve path if present)
+          let newTarget = newName
+          if (link.target.includes("/")) {
+            const linkDir = path.dirname(link.target)
+            newTarget = `${linkDir}/${newName}`
+          }
+
+          const replacement = generateReplacement(link, newTarget)
+
+          edits.push({
+            file: ref.file,
+            offset: link.start,
+            length: link.end - link.start,
+            replacement,
+          })
+        }
+      }
+    }
+  }
+
+  // Sort by file then offset descending (for safe application)
+  return edits.sort((a, b) => {
+    if (a.file !== b.file) return a.file.localeCompare(b.file)
+    return b.offset - a.offset
+  })
 }
 
 /**
@@ -205,8 +489,22 @@ export async function createFileRenameProposal(
     }
   }
 
-  // Find import edits for safe renames
+  // Find import edits for safe renames (TypeScript)
   const importEdits = findImportEdits(report.safe, cwd)
+
+  // Find wikilink edits for safe renames (Markdown)
+  const wikilinkEdits = findWikilinkEdits(report.safe, cwd)
+
+  // Find package.json and tsconfig.json edits
+  const packageJsonEdits: Edit[] = []
+  const tsconfigEdits: Edit[] = []
+  for (const op of report.safe) {
+    packageJsonEdits.push(...findPackageJsonEdits(op.oldPath, op.newPath, cwd))
+    tsconfigEdits.push(...findTsConfigEdits(op.oldPath, op.newPath, cwd))
+  }
+
+  // Combine all link updates
+  const allLinkEdits = [...importEdits, ...wikilinkEdits, ...packageJsonEdits, ...tsconfigEdits]
 
   return {
     id: `file-rename-${pattern}-to-${replacement}-${Date.now()}`,
@@ -214,7 +512,7 @@ export async function createFileRenameProposal(
     pattern,
     replacement,
     fileOps: report.safe,
-    importEdits,
+    importEdits: allLinkEdits,
     createdAt: new Date().toISOString(),
   }
 }

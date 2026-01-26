@@ -1,6 +1,9 @@
-import { Project, Node, SourceFile } from "ts-morph"
-import type { SymbolInfo, SymbolMatch, Reference } from "../../core/types"
+import { Project, Node, SourceFile, Identifier } from "ts-morph"
+import type { SymbolInfo, SymbolMatch, Reference, RefKind } from "../../core/types"
 import { computeChecksum, computeRefId } from "../../core/apply"
+
+// Default context lines before/after match
+const DEFAULT_CONTEXT_LINES = 2
 
 /**
  * Get symbol info at a specific location
@@ -36,7 +39,11 @@ export function getSymbolAt(
 /**
  * Find all references to a symbol
  */
-export function getReferences(project: Project, symbolKey: string): Reference[] {
+export function getReferences(
+  project: Project,
+  symbolKey: string,
+  contextLines = DEFAULT_CONTEXT_LINES
+): Reference[] {
   const [filePath, lineStr, colStr, name] = symbolKey.split(":")
   const line = parseInt(lineStr, 10)
   const column = parseInt(colStr, 10)
@@ -60,9 +67,16 @@ export function getReferences(project: Project, symbolKey: string): Reference[] 
     const startCol = ref.getStart() - lineStart + 1
     const endCol = ref.getEnd() - refFile.compilerNode.getPositionOfLineAndCharacter(endLine - 1, 0) + 1
 
-    // Get preview (the line containing the reference)
-    const lines = refFile.getFullText().split("\n")
-    const preview = lines[startLine - 1]?.trim() || ""
+    // Get all lines for context
+    const allLines = refFile.getFullText().split("\n")
+    const preview = allLines[startLine - 1]?.trim() || ""
+
+    // Build context with ► marker
+    const ctx = buildContext(allLines, startLine, contextLines)
+
+    // Get semantic kind and scope
+    const kind = getRefKind(ref)
+    const scope = getEnclosingScope(ref)
 
     // Compute file checksum
     const checksum = computeChecksum(refFile.getFullText())
@@ -73,10 +87,15 @@ export function getReferences(project: Project, symbolKey: string): Reference[] 
     references.push({
       refId,
       file: refFilePath,
+      line: startLine,
       range: [startLine, startCol, endLine, endCol],
       preview,
       checksum,
       selected: true,
+      kind,
+      scope,
+      ctx,
+      replace: null, // Will be set to default replacement later
     })
   }
 
@@ -212,7 +231,9 @@ export function findSymbols(project: Project, pattern: RegExp): SymbolMatch[] {
     if (seen.has(key)) return
     seen.add(key)
 
-    const refCount = node.findReferencesAsNodes?.()?.length || 0
+    // Cast to Identifier since all nodes passed here are identifiers
+    const identifier = node as Identifier
+    const refCount = identifier.findReferencesAsNodes?.()?.length || 0
     matches.push({
       symbolKey: key,
       name,
@@ -244,8 +265,8 @@ export function computeNewName(oldName: string, pattern: RegExp, replacement: st
 
 // Helper functions
 
-function findIdentifierAt(sourceFile: SourceFile, pos: number): Node | null {
-  let result: Node | null = null
+function findIdentifierAt(sourceFile: SourceFile, pos: number): Identifier | null {
+  let result: Identifier | null = null
 
   sourceFile.forEachDescendant((node) => {
     if (node.getStart() <= pos && pos < node.getEnd()) {
@@ -271,8 +292,88 @@ function getSymbolKind(
   if (Node.isMethodDeclaration(parent)) return "method"
   if (Node.isPropertySignature(parent)) return "property"
   if (Node.isPropertyDeclaration(parent)) return "property"
-  if (Node.isParameter(parent)) return "parameter"
+  if (Node.isParameterDeclaration(parent)) return "parameter"
   if (Node.isVariableDeclaration(parent)) return "variable"
 
   return "variable"
+}
+
+/**
+ * Build context lines with ► marker on match line
+ */
+function buildContext(allLines: string[], matchLine: number, contextLines: number): string[] {
+  const startLine = Math.max(0, matchLine - 1 - contextLines)
+  const endLine = Math.min(allLines.length, matchLine + contextLines)
+
+  const ctx: string[] = []
+  for (let i = startLine; i < endLine; i++) {
+    const line = allLines[i] ?? ""
+    if (i === matchLine - 1) {
+      ctx.push(`► ${line}`)
+    } else {
+      ctx.push(`  ${line}`)
+    }
+  }
+  return ctx
+}
+
+/**
+ * Get semantic kind of a reference (simplified for LLM)
+ */
+function getRefKind(node: Node): RefKind {
+  const parent = node.getParent()
+  if (!parent) return "decl"
+
+  // Call expressions: foo(), obj.foo()
+  if (Node.isCallExpression(parent)) return "call"
+  if (Node.isPropertyAccessExpression(parent) && Node.isCallExpression(parent.getParent())) {
+    return "call"
+  }
+
+  // Type references: : Foo, <Foo>, extends Foo
+  if (Node.isTypeReference(parent)) return "type"
+  if (Node.isTypeAliasDeclaration(parent)) return "type"
+  if (Node.isInterfaceDeclaration(parent)) return "type"
+
+  // String literals
+  if (Node.isStringLiteral(node) || Node.isTemplateExpression(node)) return "string"
+
+  // Comments would need special handling - for now treat as decl
+  // (ts-morph doesn't easily expose comments as nodes)
+
+  // Everything else is a declaration/reference
+  return "decl"
+}
+
+/**
+ * Get enclosing scope (function/class name or null for top-level)
+ */
+function getEnclosingScope(node: Node): string | null {
+  let current = node.getParent()
+
+  while (current) {
+    // Function declaration: function foo() {}
+    if (Node.isFunctionDeclaration(current)) {
+      return current.getName() ?? null
+    }
+    // Arrow function / function expression in variable: const foo = () => {}
+    if (Node.isVariableDeclaration(current)) {
+      const init = current.getInitializer()
+      if (init && (Node.isArrowFunction(init) || Node.isFunctionExpression(init))) {
+        return current.getName()
+      }
+    }
+    // Method: class Foo { bar() {} }
+    if (Node.isMethodDeclaration(current)) {
+      return current.getName()
+    }
+    // Class
+    if (Node.isClassDeclaration(current)) {
+      return current.getName() ?? null
+    }
+
+    current = current.getParent()
+  }
+
+  return null // Top-level
 }

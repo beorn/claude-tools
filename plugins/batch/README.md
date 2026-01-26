@@ -2,6 +2,23 @@
 
 Batch operations across files. Claude automatically uses this skill when you ask to rename, refactor, or migrate terminology.
 
+## Features at a Glance
+
+| Feature | What it does |
+|---------|--------------|
+| **TypeScript/JS Refactoring** | Rename functions, variables, types, interfaces — catches destructuring, re-exports, type references |
+| **File Renames** | Rename files with automatic import path updates |
+| **Wiki-link Updates** | Obsidian/Foam/Dendron: update `[[wikilinks]]` when renaming notes |
+| **package.json Updates** | Update exports, main, types, bin paths when renaming files |
+| **tsconfig.json Updates** | Update paths, references, includes when renaming files |
+| **Multi-language Patterns** | Go, Rust, Python, Ruby via ast-grep structural patterns |
+| **Text/Markdown Replace** | Fast search/replace across any files via ripgrep |
+| **Migrate Command** | Full terminology migration: files → symbols → text in one command |
+| **LLM Patch Workflow** | Review editsets with context, selectively modify replacements |
+| **Case Preservation** | widget→gadget, Widget→Gadget, WIDGET→GADGET automatically |
+| **Conflict Detection** | Check for naming conflicts before applying changes |
+| **Checksum Verification** | Never corrupt files — drifted files are skipped |
+
 ## What it does
 
 - **File renames**: batch rename files with automatic import path updates
@@ -10,6 +27,7 @@ Batch operations across files. Claude automatically uses this skill when you ask
 - **Batch text/markdown replace**: fast search/replace across any text files via ripgrep
 - **Terminology migrations**: widget→gadget, oldAPI→newAPI, vault→repo
 - **Case preservation**: automatically handles Widget→Gadget, WIDGET→GADGET
+- **LLM-assisted patching**: review editsets with context, skip or customize specific replacements
 
 ## Installation
 
@@ -60,6 +78,8 @@ The plugin uses a prioritized backend system - higher priority backends handle f
 |---------|----------|------------|----------|
 | **ts-morph** | 100 | .ts, .tsx, .js, .jsx | Type-aware symbol renames |
 | **ast-grep** | 50 | .go, .rs, .py, .rb, .json, .yaml | Structural pattern matching |
+| **tsconfig-json** | 46 | tsconfig*.json | TSConfig paths, references |
+| **package-json** | 45 | package.json | Exports, main, types paths |
 | **wikilink** | 40 | .md, .markdown, .mdx | Wiki link updates (Obsidian, Foam, etc.) |
 | **ripgrep** | 10 | * (any file) | Fast text search/replace |
 
@@ -95,6 +115,12 @@ bun tools/refactor.ts <command> [options]
 
 ### File Operations
 
+Automatically updates references based on file type:
+- **TypeScript/JS files** → updates import paths
+- **Markdown files** → updates `[[wikilinks]]` (Obsidian, Foam, etc.)
+- **package.json** → updates exports, main, types, bin paths
+- **tsconfig.json** → updates paths mappings, includes, references
+
 | Command | Purpose | Output |
 |---------|---------|--------|
 | `file.find --pattern <p> --replace <r> [--glob]` | Find files to rename | `{files[], count}` |
@@ -128,13 +154,35 @@ bun tools/refactor.ts <command> [options]
 | `wikilink.rename --old <path> --new <path> [-o]` | Update links when renaming | `FileEditset` |
 | `wikilink.broken [--glob]` | Find broken links | `{brokenLinks[], count}` |
 
+### Package.json Commands
+
+| Command | Purpose | Output |
+|---------|---------|--------|
+| `package.find --target <file> [--glob]` | Find package.json refs to a file | `{refs[], count}` |
+| `package.rename --old <path> --new <path> [-o]` | Update paths when renaming | `Editset` |
+| `package.broken` | Find broken path references | `{brokenPaths[], count}` |
+
+### TSConfig.json Commands
+
+| Command | Purpose | Output |
+|---------|---------|--------|
+| `tsconfig.find --target <file> [--glob]` | Find tsconfig refs to a file | `{refs[], count}` |
+| `tsconfig.rename --old <path> --new <path> [-o]` | Update paths when renaming | `Editset` |
+
 ### Editset Commands
 
 | Command | Purpose | Output |
 |---------|---------|--------|
 | `editset.select <file> [--include/--exclude] [-o]` | Filter editset | Updated editset |
+| `editset.patch <file> [-o]` | Apply LLM patch from stdin | Updated editset |
 | `editset.verify <file>` | Check for drift | `{valid, issues[]}` |
 | `editset.apply <file> [--dry-run]` | Apply with checksums | `ApplyOutput` |
+
+### Migration Commands
+
+| Command | Purpose | Output |
+|---------|---------|--------|
+| `migrate --from <p> --to <r> [--glob] [--dry-run] [-o dir]` | Full terminology migration | Phases summary |
 
 ### Example: Batch File Rename
 
@@ -214,6 +262,40 @@ bun tools/refactor.ts editset.apply editset.json --dry-run
 bun tools/refactor.ts editset.apply editset.json
 ```
 
+### Example: Full Terminology Migration
+
+```bash
+# Preview all changes (dry run)
+bun tools/refactor.ts migrate --from vault --to repo --dry-run
+
+# Apply all changes: files → symbols → text
+bun tools/refactor.ts migrate --from vault --to repo
+
+# Outputs editsets to .editsets/ directory:
+#   .editsets/01-file-renames.json
+#   .editsets/02-symbol-renames.json
+#   .editsets/03-text-patterns.json
+```
+
+### Example: LLM Patch Workflow
+
+```bash
+# 1. Generate editset with context
+bun tools/refactor.ts rename.batch --pattern vault --replace repo -o editset.json
+
+# 2. LLM reviews and patches (via heredoc)
+bun tools/refactor.ts editset.patch editset.json <<'EOF'
+{
+  "b2c3": "Repository",
+  "c3d4": null
+}
+EOF
+# null = skip this ref, string = use custom replacement
+
+# 3. Apply
+bun tools/refactor.ts editset.apply editset.json
+```
+
 ### Example: Wiki File Rename (Obsidian/Foam)
 
 ```bash
@@ -261,6 +343,12 @@ interface Reference {
   preview: string        // Context line
   checksum: string       // SHA256 of file (first 12 chars)
   selected: boolean      // For filtering
+  // Enriched fields for LLM review
+  line?: number          // 1-indexed line number
+  kind?: "call" | "decl" | "type" | "string" | "comment"  // Semantic kind
+  scope?: string | null  // Enclosing function/class or null
+  ctx?: string[]         // Context lines with ► marker
+  replace?: string | null // null = skip, string = replacement
 }
 
 interface Editset {

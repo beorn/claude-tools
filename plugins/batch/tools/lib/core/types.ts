@@ -11,14 +11,24 @@ export const SymbolInfo = z.object({
 })
 export type SymbolInfo = z.infer<typeof SymbolInfo>
 
+// Semantic kind of a reference (simplified for LLM)
+export const RefKind = z.enum(["call", "decl", "type", "string", "comment"])
+export type RefKind = z.infer<typeof RefKind>
+
 // A reference to a symbol
 export const Reference = z.object({
   refId: z.string(), // stable ID: hash(file + range)
   file: z.string(),
   range: z.tuple([z.number(), z.number(), z.number(), z.number()]), // [startLine, startCol, endLine, endCol]
-  preview: z.string(), // context line
+  preview: z.string(), // context line (legacy, kept for compatibility)
   checksum: z.string(), // file checksum at proposal time
   selected: z.boolean().default(true),
+  // Enriched fields for LLM (all optional for backwards compatibility)
+  line: z.number().optional(), // 1-indexed line number (defaults to range[0])
+  kind: RefKind.optional(), // semantic kind: call, decl, type, string, comment
+  scope: z.string().nullable().optional(), // enclosing function/class or null
+  ctx: z.array(z.string()).optional(), // context lines with ► marker
+  replace: z.string().nullable().optional(), // null = skip, string = replacement
 })
 export type Reference = z.infer<typeof Reference>
 

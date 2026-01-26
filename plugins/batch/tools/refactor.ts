@@ -20,6 +20,7 @@
  *   editset.select <file> --exclude   Filter editset
  *   editset.apply <file>              Apply editset with checksums
  *   editset.verify <file>             Verify editset can be applied
+ *   migrate --from <p> --to <r>       Orchestrate full terminology migration
  */
 
 // Import backends (they register themselves)
@@ -40,11 +41,21 @@ import {
   createFileRenameEditset,
   findBrokenLinks,
 } from "./lib/backends/wikilink"
+import {
+  findPackageJsonRefs,
+  createPackageJsonEditset,
+  findBrokenPackageJsonPaths,
+} from "./lib/backends/package-json"
+import {
+  findTsConfigRefs,
+  createTsConfigEditset,
+} from "./lib/backends/tsconfig-json"
 import { getBackendByName, getBackends } from "./lib/backend"
 
 // Import core utilities
 import { filterEditset, saveEditset, loadEditset } from "./lib/core/editset"
 import { applyEditset, verifyEditset } from "./lib/core/apply"
+import { applyPatch, parsePatch } from "./lib/core/patch"
 import {
   findFilesToRename,
   checkFileConflicts,
@@ -124,10 +135,21 @@ Editset Commands:
     --exclude <refIds>                    Comma-separated refIds to exclude
     --output <file>                       Output file (default: overwrites input)
 
+  editset.patch <file>                    Apply LLM patch to editset (reads from stdin)
+    --output <file>                       Output file (default: overwrites input)
+
   editset.apply <file>                    Apply editset with checksums
     --dry-run                             Preview without applying
 
   editset.verify <file>                   Verify editset can be applied
+
+Migration Commands:
+  migrate                               Orchestrate full terminology migration
+    --from <pattern>                    Term to replace (e.g., "vault")
+    --to <replacement>                  New term (e.g., "repo")
+    --glob <glob>                       File glob filter (default: **/*.{ts,tsx})
+    --dry-run                           Preview without applying changes
+    --output <dir>                      Directory for editsets (default: .editsets/)
 
 Global Options:
   --tsconfig <file>                       Path to tsconfig.json (default: tsconfig.json)
@@ -158,6 +180,10 @@ Examples:
 
   # Apply changes
   refactor.ts editset.apply editset.json
+
+  # Full terminology migration: vault → repo
+  refactor.ts migrate --from vault --to repo --dry-run
+  refactor.ts migrate --from vault --to repo
 `)
   process.exit(1)
 }
@@ -340,6 +366,42 @@ async function main() {
       break
     }
 
+    case "editset.patch": {
+      const inputFile = args[1]
+      const outputFile = getArg("--output") || inputFile
+
+      if (!inputFile) {
+        error("Usage: editset.patch <file> [--output file] < patch.json")
+      }
+
+      // Read patch from stdin
+      const chunks: Buffer[] = []
+      for await (const chunk of process.stdin) {
+        chunks.push(chunk)
+      }
+      const stdinContent = Buffer.concat(chunks).toString("utf-8").trim()
+
+      if (!stdinContent) {
+        error("No patch provided on stdin. Usage: editset.patch <file> <<'EOF'\n{\"refId\": \"replacement\"}\nEOF")
+      }
+
+      const editset = loadEditset(inputFile)
+      const patch = parsePatch(stdinContent)
+      const patched = applyPatch(editset, patch)
+      saveEditset(patched, outputFile)
+
+      const selectedCount = patched.refs.filter((r) => r.selected).length
+      const skippedCount = patched.refs.filter((r) => !r.selected || r.replace === null).length
+      output({
+        editsetPath: outputFile,
+        patchedRefs: Object.keys(patch).length,
+        selectedRefs: selectedCount,
+        skippedRefs: skippedCount,
+        totalRefs: patched.refs.length,
+      })
+      break
+    }
+
     case "pattern.find": {
       const pattern = getArg("--pattern")
       const glob = getArg("--glob")
@@ -486,6 +548,107 @@ async function main() {
       break
     }
 
+    // Package.json operations
+    case "package.find": {
+      const target = getArg("--target")
+      const glob = getArg("--glob") || "**/package.json"
+
+      if (!target) {
+        error("Usage: package.find --target <file> [--glob <glob>]")
+      }
+
+      const refs = findPackageJsonRefs(target, ".", glob)
+      output({
+        target,
+        glob,
+        refs: refs.map((r) => ({
+          file: r.file,
+          line: r.range[0],
+          preview: r.preview,
+        })),
+        count: refs.length,
+      })
+      break
+    }
+
+    case "package.rename": {
+      const oldPath = getArg("--old")
+      const newPath = getArg("--new")
+      const outputFile = getArg("--output") || "package-editset.json"
+
+      if (!oldPath || !newPath) {
+        error("Usage: package.rename --old <path> --new <path> [--output <file>]")
+      }
+
+      const editset = createPackageJsonEditset(oldPath, newPath, ".")
+      saveEditset(editset, outputFile)
+      output({
+        editsetPath: outputFile,
+        oldPath,
+        newPath,
+        editCount: editset.edits.length,
+        fileCount: new Set(editset.edits.map((e) => e.file)).size,
+      })
+      break
+    }
+
+    case "package.broken": {
+      const refs = findBrokenPackageJsonPaths(".")
+      output({
+        brokenPaths: refs.map((r) => ({
+          file: r.file,
+          line: r.range[0],
+          preview: r.preview,
+        })),
+        count: refs.length,
+      })
+      break
+    }
+
+    // TSConfig.json operations
+    case "tsconfig.find": {
+      const target = getArg("--target")
+      const glob = getArg("--glob") || "**/tsconfig*.json"
+
+      if (!target) {
+        error("Usage: tsconfig.find --target <file> [--glob <glob>]")
+      }
+
+      const refs = findTsConfigRefs(target, ".", glob)
+      output({
+        target,
+        glob,
+        refs: refs.map((r) => ({
+          file: r.file,
+          line: r.range[0],
+          preview: r.preview,
+        })),
+        count: refs.length,
+      })
+      break
+    }
+
+    case "tsconfig.rename": {
+      const oldPath = getArg("--old")
+      const newPath = getArg("--new")
+      const outputFile = getArg("--output") || "tsconfig-editset.json"
+
+      if (!oldPath || !newPath) {
+        error("Usage: tsconfig.rename --old <path> --new <path> [--output <file>]")
+      }
+
+      const editset = createTsConfigEditset(oldPath, newPath, ".")
+      saveEditset(editset, outputFile)
+      output({
+        editsetPath: outputFile,
+        oldPath,
+        newPath,
+        editCount: editset.edits.length,
+        fileCount: new Set(editset.edits.map((e) => e.file)).size,
+      })
+      break
+    }
+
     // File operations
     case "file.find": {
       const pattern = getArg("--pattern")
@@ -591,6 +754,175 @@ async function main() {
         skipped: result.skipped,
         errors: result.errors,
         dryRun,
+      })
+      break
+    }
+
+    // Migration orchestration command
+    case "migrate": {
+      const from = getArg("--from")
+      const to = getArg("--to")
+      const glob = getArg("--glob") || "**/*.{ts,tsx}"
+      const dryRun = hasFlag("--dry-run")
+      const outputDir = getArg("--output") || ".editsets"
+
+      if (!from || !to) {
+        error("Usage: migrate --from <pattern> --to <replacement> [--glob <glob>] [--dry-run] [--output <dir>]")
+      }
+
+      // Ensure output directory exists
+      const fs = await import("fs")
+      const path = await import("path")
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true })
+      }
+
+      const results: {
+        phase: string
+        editsetPath?: string
+        count: number
+        files: number
+        details?: string[]
+      }[] = []
+
+      console.error(`\n=== Migration: ${from} → ${to} ===\n`)
+
+      // Phase 1: File renames
+      console.error("Phase 1: Finding files to rename...")
+      const fileOps = await findFilesToRename(from, to, glob)
+      if (fileOps.length > 0) {
+        const fileEditset = await createFileRenameProposal(from, to, glob)
+        const fileEditsetPath = path.join(outputDir, "01-file-renames.json")
+        saveFileEditset(fileEditset, fileEditsetPath)
+        results.push({
+          phase: "file-renames",
+          editsetPath: fileEditsetPath,
+          count: fileEditset.fileOps.length,
+          files: fileEditset.fileOps.length,
+          details: fileEditset.fileOps.map((op) => `${op.oldPath} → ${op.newPath}`),
+        })
+        console.error(`  Found ${fileEditset.fileOps.length} files to rename`)
+      } else {
+        results.push({ phase: "file-renames", count: 0, files: 0 })
+        console.error("  No files to rename")
+      }
+
+      // Phase 2: Symbol renames (TypeScript identifiers)
+      console.error("\nPhase 2: Finding TypeScript symbols to rename...")
+      const symbolRegex = new RegExp(from, "i")
+      const symbols = findSymbols(lazyProject(), symbolRegex)
+      if (symbols.length > 0) {
+        const symbolEditset = createBatchRenameProposal(lazyProject(), symbolRegex, to)
+        const symbolEditsetPath = path.join(outputDir, "02-symbol-renames.json")
+        saveEditset(symbolEditset, symbolEditsetPath)
+        results.push({
+          phase: "symbol-renames",
+          editsetPath: symbolEditsetPath,
+          count: symbolEditset.refs.length,
+          files: new Set(symbolEditset.refs.map((r) => r.file)).size,
+        })
+        console.error(`  Found ${symbols.length} symbols, ${symbolEditset.refs.length} references across ${new Set(symbolEditset.refs.map((r) => r.file)).size} files`)
+      } else {
+        results.push({ phase: "symbol-renames", count: 0, files: 0 })
+        console.error("  No symbols to rename")
+      }
+
+      // Phase 3: Text/comment replacements (strings, comments, docs)
+      console.error("\nPhase 3: Finding text patterns (strings/comments)...")
+      // Use ripgrep for text patterns - match the term as a word boundary where possible
+      const textEditset = rgReplace(from, to, glob)
+      if (textEditset.refs.length > 0) {
+        const textEditsetPath = path.join(outputDir, "03-text-patterns.json")
+        saveEditset(textEditset, textEditsetPath)
+        results.push({
+          phase: "text-patterns",
+          editsetPath: textEditsetPath,
+          count: textEditset.refs.length,
+          files: new Set(textEditset.refs.map((r) => r.file)).size,
+        })
+        console.error(`  Found ${textEditset.refs.length} text matches across ${new Set(textEditset.refs.map((r) => r.file)).size} files`)
+      } else {
+        results.push({ phase: "text-patterns", count: 0, files: 0 })
+        console.error("  No text patterns to replace")
+      }
+
+      // Summary
+      const totalCount = results.reduce((sum, r) => sum + r.count, 0)
+
+      console.error("\n=== Summary ===")
+      for (const r of results) {
+        if (r.editsetPath) {
+          console.error(`  ${r.phase}: ${r.count} edits in ${r.files} files → ${r.editsetPath}`)
+        } else {
+          console.error(`  ${r.phase}: no changes`)
+        }
+      }
+      console.error(`  Total: ${totalCount} potential edits`)
+
+      if (dryRun) {
+        console.error("\n[DRY RUN - no changes applied]")
+        console.error("Review editsets and apply with:")
+        for (const r of results) {
+          if (r.editsetPath) {
+            if (r.phase === "file-renames") {
+              console.error(`  refactor.ts file.apply ${r.editsetPath}`)
+            } else {
+              console.error(`  refactor.ts editset.apply ${r.editsetPath}`)
+            }
+          }
+        }
+      } else {
+        console.error("\nApplying changes...")
+
+        // Apply in order: files first (to update paths), then symbols, then text
+        const applyResults: { phase: string; applied: number; skipped: number; errors: string[] }[] = []
+
+        // Apply file renames
+        const fileResult = results.find((r) => r.phase === "file-renames")
+        if (fileResult?.editsetPath) {
+          console.error("\n  Applying file renames...")
+          const fileEditset = loadFileEditset(fileResult.editsetPath)
+          const result = applyFileRenames(fileEditset, false)
+          applyResults.push({ phase: "file-renames", applied: result.applied, skipped: result.skipped, errors: result.errors })
+          console.error(`    Applied: ${result.applied}, Skipped: ${result.skipped}`)
+        }
+
+        // Apply symbol renames
+        const symbolResult = results.find((r) => r.phase === "symbol-renames")
+        if (symbolResult?.editsetPath) {
+          console.error("\n  Applying symbol renames...")
+          const symbolEditset = loadEditset(symbolResult.editsetPath)
+          const result = applyEditset(symbolEditset, false)
+          applyResults.push({ phase: "symbol-renames", applied: result.applied, skipped: result.skipped, errors: [] })
+          console.error(`    Applied: ${result.applied}, Skipped: ${result.skipped}`)
+        }
+
+        // Apply text patterns
+        const textResult = results.find((r) => r.phase === "text-patterns")
+        if (textResult?.editsetPath) {
+          console.error("\n  Applying text patterns...")
+          const textEditset = loadEditset(textResult.editsetPath)
+          const result = applyEditset(textEditset, false)
+          applyResults.push({ phase: "text-patterns", applied: result.applied, skipped: result.skipped, errors: [] })
+          console.error(`    Applied: ${result.applied}, Skipped: ${result.skipped}`)
+        }
+
+        console.error("\n=== Migration Complete ===")
+      }
+
+      output({
+        from,
+        to,
+        glob,
+        dryRun,
+        outputDir,
+        phases: results.map((r) => ({
+          phase: r.phase,
+          editsetPath: r.editsetPath,
+          count: r.count,
+          files: r.files,
+        })),
+        totalEdits: totalCount,
       })
       break
     }
