@@ -1,0 +1,14 @@
+{
+  "name": "beorn-claude-tools",
+  "owner": {
+    "name": "beorn"
+  },
+  "plugins": [
+    {
+      "name": "batch",
+      "description": "Batch search, select, and transform code with confidence-based auto-apply",
+      "version": "0.1.0",
+      "source": "./plugins/batch"
+    }
+  ]
+}
