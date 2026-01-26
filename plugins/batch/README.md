@@ -12,11 +12,11 @@ Batch operations across files with confidence-based auto-apply. Claude automatic
 ## Installation
 
 ```bash
-# Add the beorn-claude-tools marketplace (one-time)
-claude plugin marketplace add github:beorn/beorn-claude-tools
+# Add the claude-tools marketplace (one-time)
+claude plugin marketplace add github:beorn/claude-tools
 
 # Install the plugin
-claude plugin install batch@beorn-claude-tools
+claude plugin install batch@claude-tools
 ```
 
 ## Usage

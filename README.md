@@ -1,4 +1,4 @@
-# beorn-claude-tools
+# claude-tools
 
 Claude Code plugins that make Claude faster and safer at large-scale code changes.
 
@@ -39,10 +39,10 @@ Claude automatically uses the skill — no slash command needed.
 
 ```bash
 # Add marketplace (one-time)
-claude plugin marketplace add github:beorn/beorn-claude-tools
+claude plugin marketplace add github:beorn/claude-tools
 
 # Install plugins
-claude plugin install batch@beorn-claude-tools
+claude plugin install batch@claude-tools
 ```
 
 ## License
