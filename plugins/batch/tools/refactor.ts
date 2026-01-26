@@ -1,21 +1,28 @@
 #!/usr/bin/env bun
 /**
- * refactor.ts - Agent-first TypeScript refactoring CLI
+ * refactor.ts - Multi-language refactoring CLI
  *
  * Editset workflow: propose → select → apply
  *
+ * Backends:
+ *   ts-morph  - TypeScript/JavaScript identifiers (priority 100)
+ *   ast-grep  - Structural patterns for Go, Rust, Python, JSON, YAML (priority 50)
+ *   ripgrep   - Text patterns for any file (priority 10)
+ *
  * Commands:
- *   symbol.at <file> <line> [col]     Find symbol at location
- *   refs.list <symbolKey>             List all references
- *   symbols.find --pattern <regex>    Find all symbols matching pattern
- *   rename.propose <symbolKey> <new>  Create rename editset
- *   rename.batch --pattern <p> --replace <r>  Batch rename proposal
+ *   symbol.at <file> <line> [col]     Find symbol at location (ts-morph)
+ *   refs.list <symbolKey>             List all references (ts-morph)
+ *   symbols.find --pattern <regex>    Find all symbols matching pattern (ts-morph)
+ *   rename.propose <symbolKey> <new>  Create rename editset (ts-morph)
+ *   rename.batch --pattern <p> --replace <r>  Batch rename proposal (ts-morph)
+ *   pattern.find --pattern <p>        Find structural patterns (ast-grep/ripgrep)
+ *   pattern.replace --pattern <p> --replace <r>  Create pattern replace editset
  *   editset.select <file> --exclude   Filter editset
  *   editset.apply <file>              Apply editset with checksums
  *   editset.verify <file>             Verify editset can be applied
  */
 
-// Import ts-morph backend (registers itself)
+// Import backends (they register themselves)
 import {
   getProject,
   getSymbolAt,
@@ -26,6 +33,9 @@ import {
   createBatchRenameProposalFiltered,
   checkConflicts,
 } from "./lib/backends/ts-morph"
+import { findPatterns as astGrepFindPatterns, createPatternReplaceProposal as astGrepReplace } from "./lib/backends/ast-grep"
+import { findPatterns as rgFindPatterns, createPatternReplaceProposal as rgReplace } from "./lib/backends/ripgrep"
+import { getBackendByName, getBackends } from "./lib/backend"
 
 // Import core utilities
 import { filterEditset, saveEditset, loadEditset } from "./lib/core/editset"
@@ -46,7 +56,7 @@ function error(message: string): never {
 function usage(): never {
   console.error(`Usage: refactor.ts <command> [options]
 
-Commands:
+TypeScript/JavaScript Commands (ts-morph):
   symbol.at <file> <line> [col]           Find symbol at location
   refs.list <symbolKey>                   List all references
   symbols.find --pattern <regex>          Find all symbols matching pattern
@@ -61,6 +71,22 @@ Commands:
     --check-conflicts                     Check for naming conflicts (no editset generated)
     --skip <names>                        Comma-separated symbol names to skip
 
+Multi-Language Commands (ast-grep/ripgrep):
+  pattern.find                            Find structural patterns
+    --pattern <pattern>                   ast-grep pattern (e.g., "fmt.Println($MSG)")
+    --glob <glob>                         File glob filter (e.g., "**/*.go")
+    --backend <name>                      Force backend: ast-grep, ripgrep (auto-detected)
+
+  pattern.replace                         Create pattern replace editset
+    --pattern <pattern>                   Pattern to match
+    --replace <replacement>               Replacement (supports $1, $MSG metavars)
+    --glob <glob>                         File glob filter
+    --backend <name>                      Force backend: ast-grep, ripgrep
+    --output <file>                       Output file (default: editset.json)
+
+  backends.list                           List available backends
+
+Editset Commands:
   editset.select <file>                   Filter editset
     --include <refIds>                    Comma-separated refIds to include
     --exclude <refIds>                    Comma-separated refIds to exclude
@@ -75,25 +101,25 @@ Global Options:
   --tsconfig <file>                       Path to tsconfig.json (default: tsconfig.json)
 
 Examples:
-  # Find symbol at location
+  # TypeScript: Find symbol at location
   refactor.ts symbol.at src/types.ts 42 5
 
-  # List references
-  refactor.ts refs.list "src/types.ts:42:5:widget"
+  # TypeScript: Batch rename widget → gadget
+  refactor.ts rename.batch --pattern widget --replace gadget --output editset.json
 
-  # Find all widget symbols
-  refactor.ts symbols.find --pattern widget
+  # Go: Find all fmt.Println calls
+  refactor.ts pattern.find --pattern "fmt.Println(\$MSG)" --glob "**/*.go"
 
-  # Check for naming conflicts first
-  refactor.ts rename.batch --pattern widget --replace gadget --check-conflicts
+  # Go: Replace fmt.Println with log.Info
+  refactor.ts pattern.replace --pattern "fmt.Println(\$MSG)" --replace "log.Info(\$MSG)" --glob "**/*.go"
 
-  # Create batch rename proposal (skipping conflicting symbols)
-  refactor.ts rename.batch --pattern widget --replace gadget --skip createWidget,Widget --output editset.json
+  # Markdown: Replace "widget" with "gadget" in all docs
+  refactor.ts pattern.replace --pattern "widget" --replace "gadget" --glob "**/*.md" --backend ripgrep
 
-  # Preview apply
+  # Preview changes
   refactor.ts editset.apply editset.json --dry-run
 
-  # Apply
+  # Apply changes
   refactor.ts editset.apply editset.json
 `)
   process.exit(1)
@@ -274,6 +300,92 @@ async function main() {
       const editset = loadEditset(inputFile)
       const result = verifyEditset(editset)
       output(result)
+      break
+    }
+
+    case "pattern.find": {
+      const pattern = getArg("--pattern")
+      const glob = getArg("--glob")
+      const backendName = getArg("--backend")
+
+      if (!pattern) {
+        error("Usage: pattern.find --pattern <pattern> [--glob <glob>] [--backend ast-grep|ripgrep]")
+      }
+
+      // Choose backend
+      let refs
+      if (backendName === "ast-grep") {
+        refs = astGrepFindPatterns(pattern, glob)
+      } else if (backendName === "ripgrep") {
+        refs = rgFindPatterns(pattern, glob)
+      } else {
+        // Auto-detect: prefer ast-grep for structural patterns, ripgrep for text
+        // Heuristic: if pattern contains $METAVAR, use ast-grep
+        if (pattern.includes("$")) {
+          refs = astGrepFindPatterns(pattern, glob)
+        } else {
+          refs = rgFindPatterns(pattern, glob)
+        }
+      }
+
+      output(refs)
+      break
+    }
+
+    case "pattern.replace": {
+      const pattern = getArg("--pattern")
+      const replacement = getArg("--replace")
+      const glob = getArg("--glob")
+      const backendName = getArg("--backend")
+      const outputFile = getArg("--output") || "editset.json"
+
+      if (!pattern || !replacement) {
+        error("Usage: pattern.replace --pattern <pattern> --replace <replacement> [--glob <glob>] [--backend ast-grep|ripgrep] [--output file]")
+      }
+
+      // Choose backend
+      let editset
+      if (backendName === "ast-grep") {
+        editset = astGrepReplace(pattern, replacement, glob)
+      } else if (backendName === "ripgrep") {
+        editset = rgReplace(pattern, replacement, glob)
+      } else {
+        // Auto-detect: prefer ast-grep for structural patterns
+        if (pattern.includes("$")) {
+          editset = astGrepReplace(pattern, replacement, glob)
+        } else {
+          editset = rgReplace(pattern, replacement, glob)
+        }
+      }
+
+      saveEditset(editset, outputFile)
+      output({
+        editsetPath: outputFile,
+        refCount: editset.refs.length,
+        fileCount: new Set(editset.refs.map((r) => r.file)).size,
+        backend: backendName || (pattern.includes("$") ? "ast-grep" : "ripgrep"),
+      })
+      break
+    }
+
+    case "backends.list": {
+      const backends = getBackends()
+      output(
+        backends.map((b) => ({
+          name: b.name,
+          extensions: b.extensions,
+          priority: b.priority,
+          capabilities: {
+            findPatterns: !!b.findPatterns,
+            createPatternReplaceProposal: !!b.createPatternReplaceProposal,
+            getSymbolAt: !!b.getSymbolAt,
+            getReferences: !!b.getReferences,
+            findSymbols: !!b.findSymbols,
+            createRenameProposal: !!b.createRenameProposal,
+            createBatchRenameProposal: !!b.createBatchRenameProposal,
+          },
+        }))
+      )
       break
     }
 

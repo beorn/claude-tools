@@ -5,10 +5,10 @@ Batch operations across files. Claude automatically uses this skill when you ask
 ## What it does
 
 - **TypeScript/JavaScript refactoring**: rename functions, variables, types across your codebase
+- **Multi-language structural patterns**: Go, Rust, Python, Ruby, JSON, YAML via ast-grep
+- **Batch text/markdown replace**: fast search/replace across any text files via ripgrep
 - **Terminology migrations**: widget→gadget, oldAPI→newAPI
 - **Case preservation**: automatically handles Widget→Gadget, WIDGET→GADGET
-
-> **Note**: Currently supports TypeScript/JavaScript only. Multi-language support (Go, Rust, Python, JSON, YAML) and batch text/markdown replace are planned.
 
 ## Installation
 
@@ -53,13 +53,24 @@ No slash command needed - the skill triggers on natural language.
 
 ### Backend System
 
-The plugin uses ts-morph for type-aware TypeScript/JavaScript refactoring:
+The plugin uses a prioritized backend system - higher priority backends handle files they specialize in:
 
-```
-ts-morph backend   → TypeScript/JavaScript (.ts, .tsx, .js, .jsx)
+| Backend | Priority | Extensions | Use Case |
+|---------|----------|------------|----------|
+| **ts-morph** | 100 | .ts, .tsx, .js, .jsx | Type-aware symbol renames |
+| **ast-grep** | 50 | .go, .rs, .py, .rb, .json, .yaml | Structural pattern matching |
+| **ripgrep** | 10 | * (any file) | Fast text search/replace |
+
+```typescript
+// Auto-detection: patterns with $METAVAR use ast-grep, text patterns use ripgrep
+pattern.replace --pattern "fmt.Println($MSG)" --replace "log.Info($MSG)"  // → ast-grep
+pattern.replace --pattern "widget" --replace "gadget" --glob "*.md"        // → ripgrep
 ```
 
-> **Planned**: ast-grep backend for Go, Rust, Python, JSON, YAML. See the backend interface in `lib/backend.ts`.
+**Dependencies:**
+- ts-morph: bundled (no external CLI needed)
+- ast-grep: requires `sg` CLI (`brew install ast-grep` or `cargo install ast-grep`)
+- ripgrep: requires `rg` CLI (usually pre-installed, or `brew install ripgrep`)
 
 ### Editset Workflow
 
@@ -80,6 +91,8 @@ cd plugins/batch
 bun tools/refactor.ts <command> [options]
 ```
 
+### TypeScript/JavaScript Commands (ts-morph)
+
 | Command | Purpose | Output |
 |---------|---------|--------|
 | `symbol.at <file> <line> [col]` | Find symbol at location | `SymbolInfo` |
@@ -87,11 +100,24 @@ bun tools/refactor.ts <command> [options]
 | `symbols.find --pattern <regex>` | Find matching symbols | `SymbolMatch[]` |
 | `rename.propose <key> <new> [-o]` | Single symbol editset | `ProposeOutput` |
 | `rename.batch --pattern --replace [-o]` | Batch rename editset | `ProposeOutput` |
+
+### Multi-Language Commands (ast-grep/ripgrep)
+
+| Command | Purpose | Output |
+|---------|---------|--------|
+| `pattern.find --pattern <p> [--glob] [--backend]` | Find structural patterns | `Reference[]` |
+| `pattern.replace --pattern <p> --replace <r> [--glob] [--backend] [-o]` | Create pattern replace editset | `ProposeOutput` |
+| `backends.list` | List available backends | `Backend[]` |
+
+### Editset Commands
+
+| Command | Purpose | Output |
+|---------|---------|--------|
 | `editset.select <file> [--include/--exclude] [-o]` | Filter editset | Updated editset |
 | `editset.verify <file>` | Check for drift | `{valid, issues[]}` |
 | `editset.apply <file> [--dry-run]` | Apply with checksums | `ApplyOutput` |
 
-### Example: Batch Rename
+### Example: TypeScript Batch Rename
 
 ```bash
 # 1. Find all widget* symbols
@@ -111,6 +137,43 @@ bun tools/refactor.ts editset.apply editset.json
 
 # 6. Verify
 bun tsc --noEmit && bun test
+```
+
+### Example: Go Function Migration (ast-grep)
+
+```bash
+# Find all fmt.Println calls
+bun tools/refactor.ts pattern.find --pattern 'fmt.Println($MSG)' --glob '**/*.go'
+
+# Create editset to replace with log.Info
+bun tools/refactor.ts pattern.replace \
+  --pattern 'fmt.Println($MSG)' \
+  --replace 'log.Info($MSG)' \
+  --glob '**/*.go' \
+  -o editset.json
+
+# Preview and apply
+bun tools/refactor.ts editset.apply editset.json --dry-run
+bun tools/refactor.ts editset.apply editset.json
+```
+
+### Example: Markdown Text Replace (ripgrep)
+
+```bash
+# Find all mentions of "widget" in docs
+bun tools/refactor.ts pattern.find --pattern widget --glob '**/*.md'
+
+# Create editset to replace with "gadget"
+bun tools/refactor.ts pattern.replace \
+  --pattern widget \
+  --replace gadget \
+  --glob '**/*.md' \
+  --backend ripgrep \
+  -o editset.json
+
+# Preview and apply
+bun tools/refactor.ts editset.apply editset.json --dry-run
+bun tools/refactor.ts editset.apply editset.json
 ```
 
 ---

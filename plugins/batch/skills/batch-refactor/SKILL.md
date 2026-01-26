@@ -24,14 +24,19 @@ Use this skill when the user wants to make changes across multiple files:
 
 ## Tool Selection
 
-| What you're changing | File Type | Tool |
-|---------------------|-----------|------|
-| TypeScript identifiers | .ts, .tsx, .js, .jsx | `refactor.ts` (editset workflow) |
-| Text/markdown | .md, .txt | Edit with `replace_all` (one file at a time) |
+| What you're changing | File Type | Backend | Command |
+|---------------------|-----------|---------|---------|
+| TypeScript/JS identifiers | .ts, .tsx, .js, .jsx | ts-morph | `rename.batch` |
+| Go, Rust, Python structural patterns | .go, .rs, .py | ast-grep | `pattern.replace` |
+| JSON/YAML values | .json, .yaml | ast-grep | `pattern.replace` |
+| Text/markdown | .md, .txt, any | ripgrep | `pattern.replace` |
 
-**CRITICAL for TypeScript**: Always use ts-morph (via `refactor.ts`) for identifiers. It handles destructuring, arrow function params, and nested scopes that text-based tools miss.
+**CRITICAL for TypeScript**: Always use ts-morph (via `rename.batch`) for identifiers. It handles destructuring, arrow function params, and nested scopes that text-based tools miss.
 
-> **Planned**: ast-grep backend for Go, Rust, Python, JSON, YAML. Batch text replace with ripgrep.
+**Dependencies:**
+- ts-morph: bundled (no external CLI)
+- ast-grep: requires `sg` CLI (`brew install ast-grep`)
+- ripgrep: requires `rg` CLI (usually pre-installed)
 
 ## Editset Workflow (TypeScript)
 
@@ -89,6 +94,8 @@ bun run test:fast # Run tests
 
 ## CLI Reference
 
+### TypeScript/JavaScript (ts-morph)
+
 | Command | Purpose |
 |---------|---------|
 | `symbol.at <file> <line> [col]` | Find symbol at location |
@@ -96,6 +103,19 @@ bun run test:fast # Run tests
 | `symbols.find --pattern <regex>` | Find symbols matching pattern |
 | `rename.propose <key> <new>` | Single symbol rename proposal |
 | `rename.batch --pattern <p> --replace <r>` | Batch rename proposal |
+
+### Multi-Language (ast-grep/ripgrep)
+
+| Command | Purpose |
+|---------|---------|
+| `pattern.find --pattern <p> [--glob] [--backend]` | Find structural patterns |
+| `pattern.replace --pattern <p> --replace <r> [--glob] [--backend]` | Pattern replace proposal |
+| `backends.list` | List available backends |
+
+### Editset Operations
+
+| Command | Purpose |
+|---------|---------|
 | `editset.select <file> --include/--exclude` | Filter editset refs |
 | `editset.verify <file>` | Check editset can be applied |
 | `editset.apply <file> [--dry-run]` | Apply with checksum verification |
@@ -168,25 +188,56 @@ interface TestEnv { widgetDir: string }  // property definition
 
 **Rule**: If it shows up in "Find All References" in your IDE, use ts-morph.
 
-## Text/Markdown Operations
+## Text/Markdown Operations (ripgrep)
 
-For non-code files, use Edit with `replace_all` (one file at a time):
+For batch text replace across many files, use the ripgrep backend:
 
-```typescript
-Edit({
-  file_path: "docs/README.md",
-  old_string: "widget",
-  new_string: "gadget",
-  replace_all: true
-})
+```bash
+# Find all "widget" mentions in docs
+bun tools/refactor.ts pattern.find --pattern widget --glob "**/*.md"
+
+# Create editset for batch replace
+bun tools/refactor.ts pattern.replace \
+  --pattern widget \
+  --replace gadget \
+  --glob "**/*.md" \
+  --backend ripgrep \
+  --output editset.json
+
+# Preview and apply
+bun tools/refactor.ts editset.apply editset.json --dry-run
+bun tools/refactor.ts editset.apply editset.json
 ```
 
-> **Note**: This is not batch — each file requires a separate Edit call. Batch text replace with ripgrep is planned.
+**Advantages over Edit+replace_all:**
+- Dry-run preview before applying
+- Checksum verification (drift detection)
+- Batch replace across hundreds of files in one operation
+- JSON output for programmatic use
 
-## Pattern Operations (Planned)
+## Pattern Operations (ast-grep)
 
-> **Not yet implemented**: ast-grep integration for structural patterns is planned.
-> For now, use ts-morph for TypeScript identifiers or Edit for text.
+For structural patterns in Go, Rust, Python, JSON, YAML:
+
+```bash
+# Find all fmt.Println calls in Go
+bun tools/refactor.ts pattern.find --pattern 'fmt.Println($MSG)' --glob "**/*.go"
+
+# Replace with log.Info
+bun tools/refactor.ts pattern.replace \
+  --pattern 'fmt.Println($MSG)' \
+  --replace 'log.Info($MSG)' \
+  --glob "**/*.go" \
+  --output editset.json
+
+# Preview and apply
+bun tools/refactor.ts editset.apply editset.json --dry-run
+bun tools/refactor.ts editset.apply editset.json
+```
+
+**ast-grep patterns use metavariables:**
+- `$VAR` - matches any single node
+- `$$$ARGS` - matches multiple nodes (variadic)
 
 ## Important
 
