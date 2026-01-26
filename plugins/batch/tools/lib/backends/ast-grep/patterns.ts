@@ -1,4 +1,4 @@
-import { execSync } from "child_process"
+import { execFileSync } from "child_process"
 import { readFileSync, existsSync } from "fs"
 import type { Reference, Editset, Edit } from "../../core/types"
 import { computeChecksum, computeRefId } from "../../core/apply"
@@ -68,7 +68,7 @@ interface SgMatch {
 
 function runSg(args: string[]): SgMatch[] | null {
   try {
-    const output = execSync(`sg ${args.join(" ")}`, {
+    const output = execFileSync("sg", args, {
       encoding: "utf-8",
       maxBuffer: 50 * 1024 * 1024, // 50MB buffer for large codebases
       stdio: ["pipe", "pipe", "pipe"],
