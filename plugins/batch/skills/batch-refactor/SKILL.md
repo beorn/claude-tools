@@ -24,10 +24,41 @@ Use this skill when the user wants to make changes across multiple files:
 
 ## Workflow
 
-1. **SEARCH**: Find all matches using ast-grep (code) or Grep (text)
-2. **FILTER**: Check for project verification scripts (e.g., check-migration.ts)
-3. **APPLY**: Apply ALL matches (be aggressive, tests catch mistakes)
-4. **VERIFY**: Run project's lint/test commands
+1. **GATHER CONTEXT**: Read CLAUDE.md, ADRs, docs to understand the project
+2. **SEARCH**: Find all matches using ast-grep (code) or Grep (text)
+3. **ANALYZE**: Group matches, identify external references, assess clarity
+4. **CLARIFY** (if needed): Ask grouped questions, not item-by-item
+5. **APPLY**: Bulk apply with ast-grep -U or Edit replace_all
+6. **VERIFY**: Run project's test/lint commands
+
+## Context Gathering
+
+Before asking any questions, gather project context:
+
+1. **Read CLAUDE.md** - look for:
+   - Mentioned migrations or refactoring plans
+   - ADR references
+   - Terminology notes
+   - Deprecated patterns
+
+2. **Check for migration scripts** (optional reference):
+   - `scripts/check-migration.ts` or similar
+   - These may have ALLOWED_PATTERNS that indicate known exclusions
+
+3. **Read relevant ADRs** if mentioned in CLAUDE.md
+
+## Deciding What to Ask
+
+| Context Clarity | Action |
+|-----------------|--------|
+| Well-documented migration (ADR, CLAUDE.md) | Apply all, no questions |
+| Clear our-concept vs external | Apply ours, skip external, one confirmation |
+| Ambiguous/mixed contexts | Group by context type, ask once per group |
+
+**Never ask item-by-item.** If you have 100+ matches:
+- Group by context (our code, external refs, URLs, etc.)
+- Ask 1-3 grouped questions max
+- Default to applying all if context is clear
 
 ## Confidence Philosophy
 
@@ -50,13 +81,7 @@ Confidence is based on **our concept vs external reference**, not code vs string
 
 If project has ALLOWED_PATTERNS (e.g., check-migration.ts), trust those exclusions.
 
-## Step 1: Search
-
-**Check for project verification script first:**
-```bash
-# If project has check-migration.ts or similar, use it
-bun scripts/check-migration.ts 2>&1 | head -50
-```
+## Search Tools
 
 **For code files (.ts, .tsx, .js, .py)** - use ast-grep:
 ```bash
@@ -68,7 +93,7 @@ ast-grep run -p "oldName" -l typescript --json=stream packages/ 2>/dev/null
 Grep({ pattern: "oldName", path: "packages/", output_mode: "content", "-C": 3 })
 ```
 
-## Step 2: Apply ALL Matches
+## Apply Tools
 
 **For code files** - use ast-grep bulk mode:
 ```bash
@@ -85,21 +110,18 @@ Edit({
 })
 ```
 
-## Step 3: Verify
+## Verify
 
 Run project verification:
 ```bash
 # Bun projects
 bun fix && bun run test:fast
-
-# Check migration completeness if script exists
-bun scripts/check-migration.ts
 ```
 
 Report summary:
 ```
 Applied 765 changes across 93 files.
-Verification: PASSED (0 unexpected mentions remaining)
+Verification: PASSED (all tests pass)
 ```
 
 ## When to Ask User
