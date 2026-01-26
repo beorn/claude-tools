@@ -8,7 +8,7 @@ allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 
 Intelligent batch refactoring with confidence-based auto-apply. Claude reviews all matches, auto-applies high-confidence changes, and asks about uncertain ones.
 
-**Keywords**: batch rename, mass refactor, find and replace, bulk edit, rename across files, search and replace, codemod, ast-grep, rename everywhere, rename all occurrences, change all, replace all, refactor across, global replace, global rename, update all references, rename function, rename variable, bulk replace, project-wide rename, codebase-wide, rename symbol, structural search, pattern replace, rename in all files, change everywhere, migrate name, rename throughout
+**Keywords**: batch rename, mass refactor, find and replace, bulk edit, rename across files, search and replace, codemod, ast-grep, rename everywhere, rename all occurrences, change all, replace all, refactor across, global replace, global rename, update all references, rename function, rename variable, bulk replace, project-wide rename, codebase-wide, rename symbol, structural search, pattern replace, rename in all files, change everywhere, migrate name, rename throughout, refactoring, change terminology, update terminology, change wording, update wording, change language, standardize naming, naming convention, consistent naming, update naming
 
 ## Main Command: `/batch rename`
 
