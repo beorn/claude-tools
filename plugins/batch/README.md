@@ -1,6 +1,13 @@
-# Batch Refactoring Plugin for Claude Code
+# Batch Plugin for Claude Code
 
-Intelligent batch refactoring with confidence-based auto-apply. Claude automatically uses this skill when you ask to rename or refactor across multiple files.
+Batch operations across files with confidence-based auto-apply. Claude automatically uses this skill when you ask to rename, replace, refactor, or migrate terminology.
+
+## What it does
+
+- **Code refactoring**: rename functions, variables, types across TypeScript/JavaScript/Python
+- **Text/markdown updates**: change terminology, update documentation
+- **Terminology migrations**: vault→repo, old API→new API
+- **File renaming**: batch rename files (future)
 
 ## Installation
 
@@ -14,13 +21,14 @@ claude plugin install batch@beorn-claude-tools
 
 ## Usage
 
-Just ask naturally - Claude will use the batch refactoring skill automatically:
+Just ask naturally - Claude uses the skill automatically:
 
 ```
 "rename createVault to createRepo across the codebase"
 "change all vault mentions to repo in packages/"
+"update the terminology from X to Y in the docs"
 "refactor oldFunction to newFunction everywhere"
-"update terminology from X to Y"
+"migrate from old API to new API"
 ```
 
 No slash command needed - the skill triggers on natural language.
@@ -39,13 +47,8 @@ No slash command needed - the skill triggers on natural language.
 | Confidence | Context | Action |
 |------------|---------|--------|
 | **HIGH** | Function call, import, type reference, variable declaration | Auto-apply |
-| **MEDIUM** | String literal, comment, documentation | Ask user |
+| **MEDIUM** | String literal, comment, documentation, markdown | Ask user |
 | **LOW** | Partial match (substring), archive/vendor dirs | Skip |
-
-**Examples:**
-- `oldFunc()` call → HIGH (clear code usage)
-- `"oldFunc"` in error message → MEDIUM (might be intentional)
-- `oldFunc` in `myOldFuncHelper` → LOW (different identifier)
 
 ## Requirements
 
@@ -60,36 +63,14 @@ No slash command needed - the skill triggers on natural language.
 
 - **mcp-refactor-typescript** (optional, bundled via MCP for type-safe renames)
 
-## Scope
+## Supported Operations
 
-Works on **all text files**:
-- **Code** (`.ts`, `.tsx`, `.js`, `.py`, etc.) - AST-aware with ast-grep
-- **Markdown** (`.md`) - Text-based with ripgrep
-- **Comments and documentation** - Full support
-
-## Example Session
-
-```
-User: rename vaultRoot to repoRoot in packages/km-storage/
-
-Claude: I'll use batch refactoring to rename vaultRoot to repoRoot.
-
-Found 47 matches across 12 files.
-
-Confidence breakdown:
-- HIGH (auto-apply): 38 matches
-- MEDIUM (needs review): 7 matches
-- LOW (skip): 2 matches
-
-[Applies 38 HIGH confidence changes]
-[Asks about 7 MEDIUM confidence changes]
-
-Applied 43 changes (38 auto + 5 user-approved)
-Skipped 4 (2 low-confidence + 2 user-rejected)
-
-Running verification: bun fix && bun run test:fast
-Verification: PASSED
-```
+| Operation | Tool | File types |
+|-----------|------|------------|
+| Code refactoring | ast-grep | .ts, .tsx, .js, .py |
+| Text search-replace | ripgrep + Edit | .md, .txt, any text |
+| Type-safe renames | mcp-refactor-typescript | TypeScript |
+| File renaming | Bash mv | Any (future) |
 
 ## Plugin Structure
 

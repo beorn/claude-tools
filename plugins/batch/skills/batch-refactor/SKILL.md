@@ -1,14 +1,26 @@
 ---
 name: batch-refactor
-description: Batch search and replace across codebase with confidence-based auto-apply. Use when user wants to rename, replace, or refactor terms across multiple files.
+description: Batch operations across files with confidence-based auto-apply. Use for renaming, search-replace, refactoring code, updating text/markdown, and migrating terminology.
 allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 ---
 
-# Batch Refactoring Skill
+# Batch Operations Skill
 
-Use this skill when the user wants to rename, replace, or change terminology across multiple files in the codebase.
+Use this skill when the user wants to make changes across multiple files:
+- **Code refactoring**: rename functions, variables, types
+- **Text/markdown updates**: change terminology, update docs
+- **File operations**: batch rename files (future)
+- **Terminology migrations**: vault→repo, old API→new API
 
-**Trigger phrases**: "rename X to Y everywhere", "change all X to Y", "refactor X across the codebase", "batch replace", "update terminology", "rename function/variable everywhere"
+**Trigger phrases**:
+- "rename X to Y everywhere"
+- "change all X to Y"
+- "refactor X across the codebase"
+- "batch replace"
+- "update terminology"
+- "migrate from X to Y"
+- "rename function/variable everywhere"
+- "change wording in all files"
 
 ## Workflow
 
@@ -36,13 +48,14 @@ Grep({ pattern: "oldName", path: "packages/", output_mode: "content", "-C": 3 })
 | Confidence | Context | Action |
 |------------|---------|--------|
 | **HIGH** | Function call, import, type reference, variable declaration | Auto-apply |
-| **MEDIUM** | String literal, comment, documentation | Ask user |
+| **MEDIUM** | String literal, comment, documentation, markdown | Ask user |
 | **LOW** | Partial match (substring of different word), archive/vendor | Skip |
 
 **Examples:**
 - `oldFunc()` call site → HIGH
 - `"oldFunc"` in error message → MEDIUM
 - `oldFunc` in `myOldFuncHelper` → LOW (different identifier)
+- `# Old Terminology` in markdown → MEDIUM
 
 ## Step 3: Report Summary
 
@@ -61,11 +74,11 @@ Use AskUserQuestion with multiSelect:
 
 ```typescript
 AskUserQuestion({
-  question: "Which of these matches should be renamed?",
+  question: "Which of these matches should be changed?",
   header: "Review",
   options: [
     { label: "src/foo.ts:45", description: "In string: \"oldName not found\"" },
-    { label: "src/bar.ts:120", description: "In comment: // oldName handler" },
+    { label: "docs/guide.md:12", description: "In heading: # Old Name Guide" },
   ],
   multiSelect: true
 })
@@ -80,7 +93,7 @@ Group by file if more than 4 matches.
 ast-grep run -p "oldName" -r "newName" -l typescript -U packages/
 ```
 
-**For individual/MEDIUM matches** - use Edit tool:
+**For text/markdown or individual matches** - use Edit tool:
 ```typescript
 Edit({
   file_path: match.file,
@@ -103,15 +116,16 @@ Skipped 4 (2 low-confidence + 2 user-rejected)
 Verification: PASSED
 ```
 
-## Tools Reference
+## Supported Operations
 
-| Tool | Best for |
-|------|----------|
-| **ast-grep** | Code patterns, structural matching |
-| **Grep** | Text patterns, markdown, comments |
-| **mcp-refactor-typescript** | Type-safe renames with import updates |
+| Operation | Tool | File types |
+|-----------|------|------------|
+| Code refactoring | ast-grep | .ts, .tsx, .js, .py |
+| Text search-replace | Grep + Edit | .md, .txt, any text |
+| Type-safe renames | mcp-refactor-typescript | TypeScript |
+| File renaming | Bash mv | Any (future) |
 
-## AST Pattern Syntax
+## AST Pattern Syntax (ast-grep)
 
 | Pattern | Matches |
 |---------|---------|
@@ -125,3 +139,4 @@ Verification: PASSED
 1. **Always verify** with project's test/lint commands
 2. **Check partial matches** - `oldName` might match `myOldNameHelper`
 3. **Tests are truth** - "No refactoring tool guarantees behavior preservation. Your test suite does."
+4. **Markdown/text**: Be more conservative, ask user more often

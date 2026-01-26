@@ -6,8 +6,8 @@
   "plugins": [
     {
       "name": "batch",
-      "description": "Batch search, select, and transform code with confidence-based auto-apply",
-      "version": "0.1.0",
+      "description": "Batch operations across files: rename, search-replace, refactor code, update text/markdown, migrate terminology",
+      "version": "0.2.0",
       "source": {
         "source": "github",
         "repo": "beorn/beorn-claude-tools",
