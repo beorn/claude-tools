@@ -27,9 +27,9 @@ function setupFixtures() {
   // Create test files
   fs.writeFileSync(path.join(FIXTURE_DIR, "repo.ts"), 'export const repo = "test"')
   fs.writeFileSync(path.join(FIXTURE_DIR, "repo-loader.ts"), 'import { repo } from "./repo"')
-  fs.writeFileSync(path.join(FIXTURE_DIR, "VaultConfig.ts"), "export interface VaultConfig {}")
+  fs.writeFileSync(path.join(FIXTURE_DIR, "RepoConfig.ts"), "export interface RepoConfig {}")
   fs.mkdirSync(path.join(FIXTURE_DIR, "testing"), { recursive: true })
-  fs.writeFileSync(path.join(FIXTURE_DIR, "testing/fake-repo.ts"), "export class FakeVault {}")
+  fs.writeFileSync(path.join(FIXTURE_DIR, "testing/fake-repo.ts"), "export class FakeRepo {}")
 
   // Create a file that would conflict (repo.ts already exists)
   fs.writeFileSync(path.join(FIXTURE_DIR, "repo.ts"), 'export const repo = "existing"')
@@ -47,11 +47,11 @@ describe("applyReplacement", () => {
   })
 
   test("preserves PascalCase", () => {
-    expect(applyReplacement("VaultConfig.ts", "repo", "repo")).toBe("RepoConfig.ts")
+    expect(applyReplacement("RepoConfig.ts", "repo", "repo")).toBe("RepoConfig.ts")
   })
 
   test("preserves UPPERCASE", () => {
-    expect(applyReplacement("VAULT_ROOT.ts", "repo", "repo")).toBe("REPO_ROOT.ts")
+    expect(applyReplacement("REPO_ROOT.ts", "repo", "repo")).toBe("REPO_ROOT.ts")
   })
 
   test("handles multiple occurrences", () => {
@@ -59,7 +59,7 @@ describe("applyReplacement", () => {
   })
 
   test("handles mixed case in same file", () => {
-    expect(applyReplacement("VaultLoader-repo.ts", "repo", "repo")).toBe("RepoLoader-repo.ts")
+    expect(applyReplacement("RepoLoader-repo.ts", "repo", "repo")).toBe("RepoLoader-repo.ts")
   })
 })
 
@@ -74,7 +74,7 @@ describe("findFilesToRename", () => {
     const paths = ops.map((op) => op.oldPath)
     expect(paths).toContain("repo.ts")
     expect(paths).toContain("repo-loader.ts")
-    expect(paths).toContain("VaultConfig.ts")
+    expect(paths).toContain("RepoConfig.ts")
     expect(paths).toContain("testing/fake-repo.ts")
   })
 
@@ -87,7 +87,7 @@ describe("findFilesToRename", () => {
     const loaderOp = ops.find((op) => op.oldPath === "repo-loader.ts")
     expect(loaderOp?.newPath).toBe("repo-loader.ts")
 
-    const configOp = ops.find((op) => op.oldPath === "VaultConfig.ts")
+    const configOp = ops.find((op) => op.oldPath === "RepoConfig.ts")
     expect(configOp?.newPath).toBe("RepoConfig.ts")
   })
 

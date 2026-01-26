@@ -49,7 +49,7 @@ export function applyReplacement(filename: string, pattern: string | RegExp, rep
   if (typeof pattern === "string") {
     // Case-preserving replacement
     return filename.replace(new RegExp(pattern, "gi"), (match) => {
-      // Preserve case: repo -> repo, Vault -> Repo, VAULT -> REPO
+      // Preserve case: repo -> repo, Repo -> Repo, REPO -> REPO
       if (match === match.toUpperCase()) return replacement.toUpperCase()
       if (match[0] === match[0].toUpperCase()) return replacement[0].toUpperCase() + replacement.slice(1)
       return replacement

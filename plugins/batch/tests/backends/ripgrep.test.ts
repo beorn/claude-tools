@@ -151,8 +151,78 @@ describe("ripgrep backend", () => {
           expect(edit.file).toBeDefined()
           expect(typeof edit.offset).toBe("number")
           expect(typeof edit.length).toBe("number")
-          expect(edit.replacement).toBe("gadget")
+          // Case-preserving: lowercase "widget" → "gadget", uppercase "Widget" → "Gadget"
+          expect(["gadget", "Gadget", "GADGET"]).toContain(edit.replacement)
         }
+      } finally {
+        process.chdir(cwd)
+      }
+    })
+  })
+
+  describe("case-insensitive search and case-preserving replace", () => {
+    let tempDir: string
+
+    beforeAll(() => {
+      tempDir = mkdtempSync(join(tmpdir(), "ripgrep-case-test-"))
+      // Create test files with different case variants
+      writeFileSync(
+        join(tempDir, "mixed-case.ts"),
+        `
+const vault = "lowercase"
+const Vault = "PascalCase"
+const VAULT = "SCREAMING_CASE"
+const vaultPath = "camelCaseCompound"
+const VaultConfig = "PascalCaseCompound"
+const VAULT_ROOT = "SCREAMING_COMPOUND"
+`
+      )
+    })
+
+    afterAll(() => {
+      rmSync(tempDir, { recursive: true, force: true })
+    })
+
+    test("finds all case variants with -i flag", () => {
+      try {
+        execSync("which rg", { stdio: "pipe" })
+      } catch {
+        console.log("Skipping test: ripgrep (rg) not installed")
+        return
+      }
+
+      const cwd = process.cwd()
+      try {
+        process.chdir(tempDir)
+        const refs = findPatterns("vault", "*.ts")
+
+        // Should find all 6 occurrences
+        expect(refs.length).toBe(6)
+      } finally {
+        process.chdir(cwd)
+      }
+    })
+
+    test("preserves case in replacement", () => {
+      try {
+        execSync("which rg", { stdio: "pipe" })
+      } catch {
+        console.log("Skipping test: ripgrep (rg) not installed")
+        return
+      }
+
+      const cwd = process.cwd()
+      try {
+        process.chdir(tempDir)
+        const editset = createPatternReplaceProposal("vault", "repo", "*.ts")
+
+        // Build a map of what each edit replaces
+        const replacements = editset.edits.map((e) => e.replacement)
+
+        // Should have case-preserving replacements
+        expect(replacements).toContain("repo") // lowercase
+        expect(replacements).toContain("Repo") // PascalCase
+        expect(replacements).toContain("REPO") // SCREAMING_CASE
       } finally {
         process.chdir(cwd)
       }

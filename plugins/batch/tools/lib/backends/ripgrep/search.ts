@@ -10,7 +10,7 @@ import { computeChecksum, computeRefId } from "../../core/apply"
  * @param glob - Optional file glob filter (e.g., "*.md")
  */
 export function findPatterns(pattern: string, glob?: string): Reference[] {
-  const args = ["--json", "--line-number", "--column", pattern]
+  const args = ["--json", "--line-number", "--column", "-i", pattern] // -i for case-insensitive
   if (glob) {
     args.push("--glob", glob)
   }
@@ -156,10 +156,27 @@ function parseMatches(matches: RgMatch[], pattern: string): Reference[] {
   return refs
 }
 
+/**
+ * Case-preserving replacement for terminology migrations
+ * Matches the case pattern of the original text in the replacement
+ */
+function preserveCase(match: string, replacement: string): string {
+  // SCREAMING_CASE: entire match is uppercase
+  if (match === match.toUpperCase() && match.length > 1) {
+    return replacement.toUpperCase()
+  }
+  // PascalCase: first char is uppercase
+  if (match[0] === match[0].toUpperCase()) {
+    return replacement[0].toUpperCase() + replacement.slice(1)
+  }
+  // camelCase/lowercase
+  return replacement.toLowerCase()
+}
+
 function generateEdits(refs: Reference[], pattern: string, replacement: string): Edit[] {
   const edits: Edit[] = []
   const fileContents = new Map<string, string>()
-  const regex = new RegExp(pattern, "g")
+  const regex = new RegExp(pattern, "gi") // Case-insensitive matching
 
   for (const ref of refs) {
     if (!ref.selected) continue
@@ -184,7 +201,8 @@ function generateEdits(refs: Reference[], pattern: string, replacement: string):
 
     // Get the actual matched text to compute proper replacement
     const matchedText = content.slice(offset, offset + matchLength)
-    const actualReplacement = matchedText.replace(regex, replacement)
+    // Use case-preserving replacement
+    const actualReplacement = matchedText.replace(regex, (m) => preserveCase(m, replacement))
 
     edits.push({
       file: ref.file,
