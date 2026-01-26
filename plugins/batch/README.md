@@ -4,10 +4,11 @@ Batch operations across files. Claude automatically uses this skill when you ask
 
 ## What it does
 
+- **File renames**: batch rename files with automatic import path updates
 - **TypeScript/JavaScript refactoring**: rename functions, variables, types across your codebase
 - **Multi-language structural patterns**: Go, Rust, Python, Ruby, JSON, YAML via ast-grep
 - **Batch text/markdown replace**: fast search/replace across any text files via ripgrep
-- **Terminology migrations**: widget→gadget, oldAPI→newAPI
+- **Terminology migrations**: widget→gadget, oldAPI→newAPI, vault→repo
 - **Case preservation**: automatically handles Widget→Gadget, WIDGET→GADGET
 
 ## Installation
@@ -91,6 +92,15 @@ cd plugins/batch
 bun tools/refactor.ts <command> [options]
 ```
 
+### File Operations
+
+| Command | Purpose | Output |
+|---------|---------|--------|
+| `file.find --pattern <p> --replace <r> [--glob]` | Find files to rename | `{files[], count}` |
+| `file.rename --pattern <p> --replace <r> [--glob] [-o] [--check-conflicts]` | Create file rename editset | `FileEditset` |
+| `file.verify <file>` | Check files haven't drifted | `{valid, drifted[]}` |
+| `file.apply <file> [--dry-run]` | Apply file renames | `{applied, skipped, errors[]}` |
+
 ### TypeScript/JavaScript Commands (ts-morph)
 
 | Command | Purpose | Output |
@@ -99,7 +109,7 @@ bun tools/refactor.ts <command> [options]
 | `refs.list <symbolKey>` | List all references | `Reference[]` |
 | `symbols.find --pattern <regex>` | Find matching symbols | `SymbolMatch[]` |
 | `rename.propose <key> <new> [-o]` | Single symbol editset | `ProposeOutput` |
-| `rename.batch --pattern --replace [-o]` | Batch rename editset | `ProposeOutput` |
+| `rename.batch --pattern --replace [-o] [--check-conflicts]` | Batch rename editset | `ProposeOutput` |
 
 ### Multi-Language Commands (ast-grep/ripgrep)
 
@@ -116,6 +126,25 @@ bun tools/refactor.ts <command> [options]
 | `editset.select <file> [--include/--exclude] [-o]` | Filter editset | Updated editset |
 | `editset.verify <file>` | Check for drift | `{valid, issues[]}` |
 | `editset.apply <file> [--dry-run]` | Apply with checksums | `ApplyOutput` |
+
+### Example: Batch File Rename
+
+```bash
+# 1. Find files matching pattern
+bun tools/refactor.ts file.find --pattern vault --replace repo --glob "**/*.ts"
+
+# 2. Check for conflicts
+bun tools/refactor.ts file.rename --pattern vault --replace repo --glob "**/*.ts" --check-conflicts
+
+# 3. Create editset
+bun tools/refactor.ts file.rename --pattern vault --replace repo --glob "**/*.ts" -o file-editset.json
+
+# 4. Preview changes
+bun tools/refactor.ts file.apply file-editset.json --dry-run
+
+# 5. Apply
+bun tools/refactor.ts file.apply file-editset.json
+```
 
 ### Example: TypeScript Batch Rename
 

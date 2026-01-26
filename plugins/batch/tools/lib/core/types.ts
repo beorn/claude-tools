@@ -106,3 +106,38 @@ export const ConflictReport = z.object({
   safe: z.array(SafeRename),
 })
 export type ConflictReport = z.infer<typeof ConflictReport>
+
+// File operation types
+export const FileOp = z.object({
+  opId: z.string(), // unique ID for this operation
+  type: z.enum(["rename", "move"]),
+  oldPath: z.string(), // absolute or relative path
+  newPath: z.string(),
+  checksum: z.string(), // file checksum at proposal time
+})
+export type FileOp = z.infer<typeof FileOp>
+
+export const FileEditset = z.object({
+  id: z.string(), // "file-rename-vault-to-repo-1706000000"
+  operation: z.literal("file-rename"),
+  pattern: z.string().optional(), // glob pattern used
+  replacement: z.string().optional(), // replacement pattern
+  fileOps: z.array(FileOp), // files to rename
+  importEdits: z.array(Edit), // import path updates
+  createdAt: z.string(),
+})
+export type FileEditset = z.infer<typeof FileEditset>
+
+export const FileConflict = z.object({
+  oldPath: z.string(),
+  newPath: z.string(),
+  reason: z.enum(["target_exists", "same_path"]),
+  existingPath: z.string().optional(),
+})
+export type FileConflict = z.infer<typeof FileConflict>
+
+export const FileRenameReport = z.object({
+  conflicts: z.array(FileConflict),
+  safe: z.array(FileOp),
+})
+export type FileRenameReport = z.infer<typeof FileRenameReport>

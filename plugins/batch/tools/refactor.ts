@@ -40,6 +40,15 @@ import { getBackendByName, getBackends } from "./lib/backend"
 // Import core utilities
 import { filterEditset, saveEditset, loadEditset } from "./lib/core/editset"
 import { applyEditset, verifyEditset } from "./lib/core/apply"
+import {
+  findFilesToRename,
+  checkFileConflicts,
+  createFileRenameProposal,
+  verifyFileEditset,
+  applyFileRenames,
+  saveFileEditset,
+  loadFileEditset,
+} from "./lib/core/file-ops"
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -70,6 +79,24 @@ TypeScript/JavaScript Commands (ts-morph):
     --output <file>                       Output file (default: editset.json)
     --check-conflicts                     Check for naming conflicts (no editset generated)
     --skip <names>                        Comma-separated symbol names to skip
+
+File Operations:
+  file.find                               Find files to rename
+    --pattern <string>                    Filename pattern to match (e.g., "vault")
+    --replace <string>                    Replacement (e.g., "repo")
+    --glob <glob>                         File glob filter (default: **/*.{ts,tsx})
+
+  file.rename                             Create file rename editset
+    --pattern <string>                    Filename pattern to match
+    --replace <string>                    Replacement
+    --glob <glob>                         File glob filter (default: **/*.{ts,tsx})
+    --output <file>                       Output file (default: file-editset.json)
+    --check-conflicts                     Check for naming conflicts only
+
+  file.apply <file>                       Apply file rename editset
+    --dry-run                             Preview without applying
+
+  file.verify <file>                      Verify file editset can be applied
 
 Multi-Language Commands (ast-grep/ripgrep):
   pattern.find                            Find structural patterns
@@ -106,6 +133,11 @@ Examples:
 
   # TypeScript: Batch rename widget → gadget
   refactor.ts rename.batch --pattern widget --replace gadget --output editset.json
+
+  # File rename: vault*.ts → repo*.ts
+  refactor.ts file.rename --pattern vault --replace repo --glob "**/*.ts" --output file-editset.json
+  refactor.ts file.apply file-editset.json --dry-run
+  refactor.ts file.apply file-editset.json
 
   # Go: Find all fmt.Println calls
   refactor.ts pattern.find --pattern "fmt.Println(\$MSG)" --glob "**/*.go"
@@ -386,6 +418,115 @@ async function main() {
           },
         }))
       )
+      break
+    }
+
+    // File operations
+    case "file.find": {
+      const pattern = getArg("--pattern")
+      const replacement = getArg("--replace")
+      const glob = getArg("--glob") || "**/*.{ts,tsx,js,jsx}"
+
+      if (!pattern || !replacement) {
+        error("Usage: file.find --pattern <string> --replace <string> [--glob <glob>]")
+      }
+
+      const fileOps = await findFilesToRename(pattern, replacement, glob)
+      output({
+        pattern,
+        replacement,
+        glob,
+        files: fileOps.map((op) => ({
+          oldPath: op.oldPath,
+          newPath: op.newPath,
+        })),
+        count: fileOps.length,
+      })
+      break
+    }
+
+    case "file.rename": {
+      const pattern = getArg("--pattern")
+      const replacement = getArg("--replace")
+      const glob = getArg("--glob") || "**/*.{ts,tsx,js,jsx}"
+      const outputFile = getArg("--output") || "file-editset.json"
+      const checkConflictsFlag = hasFlag("--check-conflicts")
+
+      if (!pattern || !replacement) {
+        error("Usage: file.rename --pattern <string> --replace <string> [--glob <glob>] [--output file] [--check-conflicts]")
+      }
+
+      // Find files to rename
+      const fileOps = await findFilesToRename(pattern, replacement, glob)
+
+      if (fileOps.length === 0) {
+        output({ message: "No files found matching pattern", pattern, glob })
+        break
+      }
+
+      // Check conflicts mode
+      if (checkConflictsFlag) {
+        const report = checkFileConflicts(fileOps)
+        output({
+          conflicts: report.conflicts,
+          safe: report.safe.map((op) => ({ oldPath: op.oldPath, newPath: op.newPath })),
+          conflictCount: report.conflicts.length,
+          safeCount: report.safe.length,
+        })
+        break
+      }
+
+      // Create editset
+      const editset = await createFileRenameProposal(pattern, replacement, glob)
+      saveFileEditset(editset, outputFile)
+
+      output({
+        editsetPath: outputFile,
+        fileCount: editset.fileOps.length,
+        importEditCount: editset.importEdits.length,
+        files: editset.fileOps.map((op) => ({ oldPath: op.oldPath, newPath: op.newPath })),
+      })
+      break
+    }
+
+    case "file.verify": {
+      const inputFile = args[1]
+
+      if (!inputFile) {
+        error("Usage: file.verify <file>")
+      }
+
+      const editset = loadFileEditset(inputFile)
+      const result = verifyFileEditset(editset)
+      output({
+        valid: result.valid,
+        drifted: result.drifted,
+        fileCount: editset.fileOps.length,
+      })
+      break
+    }
+
+    case "file.apply": {
+      const inputFile = args[1]
+      const dryRun = hasFlag("--dry-run")
+
+      if (!inputFile) {
+        error("Usage: file.apply <file> [--dry-run]")
+      }
+
+      const editset = loadFileEditset(inputFile)
+      const result = applyFileRenames(editset, dryRun)
+
+      if (dryRun) {
+        console.error("[DRY RUN - no files renamed]")
+      }
+
+      output({
+        applied: result.applied,
+        skipped: result.skipped,
+        errors: result.errors,
+        dryRun,
+      })
       break
     }
 
