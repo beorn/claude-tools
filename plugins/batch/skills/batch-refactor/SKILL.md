@@ -22,109 +22,140 @@ Use this skill when the user wants to make changes across multiple files:
 - "rename function/variable everywhere"
 - "change wording in all files"
 
-## Workflow
+## Tool Selection
 
-1. **SAFETY CHECK**: Ensure changes can be undone (git status, clean working tree)
-2. **GATHER CONTEXT**: Read CLAUDE.md, ADRs, docs to understand the project
-3. **SEARCH**: Find all matches using ast-grep (code) or Grep (text)
-4. **ANALYZE**: Group matches, identify external references, assess clarity
-5. **CLARIFY** (if needed): Ask grouped questions, not item-by-item
-6. **APPLY**: Bulk apply with ast-grep -U or Edit replace_all
-7. **VERIFY**: Run project's test/lint commands
+| What you're changing | File Type | Tool |
+|---------------------|-----------|------|
+| TypeScript identifiers | .ts, .tsx, .js, .jsx | `refactor.ts` (editset workflow) |
+| Code patterns | Any language | ast-grep |
+| String literals | Any | ast-grep or Edit |
+| Text/markdown | .md, .txt | Edit with `replace_all` |
+
+**CRITICAL for TypeScript**: Always use ts-morph (via `refactor.ts`) for identifiers. ast-grep misses destructuring patterns.
+
+## Editset Workflow (TypeScript)
+
+The editset workflow provides safe, reviewable batch renames with checksum verification.
+
+### 1. Find Symbols
+
+```bash
+cd vendor/beorn-claude-tools/plugins/batch
+bun tools/refactor.ts symbols.find --pattern vault
+```
+
+Output: JSON array of matching symbols with location and reference count.
+
+### 2. Check for Conflicts
+
+```bash
+bun tools/refactor.ts rename.batch --pattern vault --replace repo --check-conflicts
+```
+
+Output: Conflict report showing:
+- `conflicts`: Symbols that would clash with existing names
+- `safe`: Symbols safe to rename
+
+### 3. Create Editset (Proposal)
+
+```bash
+# Skip conflicting symbols
+bun tools/refactor.ts rename.batch --pattern vault --replace repo \
+  --skip createVault,Vault \
+  --output editset.json
+```
+
+Output: JSON editset file with all edits and file checksums.
+
+### 4. Preview Changes
+
+```bash
+bun tools/refactor.ts editset.apply editset.json --dry-run
+```
+
+### 5. Apply Changes
+
+```bash
+bun tools/refactor.ts editset.apply editset.json
+```
+
+### 6. Verify
+
+```bash
+bun tsc --noEmit  # Check types
+bun fix           # Fix lint issues
+bun run test:fast # Run tests
+```
+
+## CLI Reference
+
+| Command | Purpose |
+|---------|---------|
+| `symbol.at <file> <line> [col]` | Find symbol at location |
+| `refs.list <symbolKey>` | List all references to a symbol |
+| `symbols.find --pattern <regex>` | Find symbols matching pattern |
+| `rename.propose <key> <new>` | Single symbol rename proposal |
+| `rename.batch --pattern <p> --replace <r>` | Batch rename proposal |
+| `editset.select <file> --include/--exclude` | Filter editset refs |
+| `editset.verify <file>` | Check editset can be applied |
+| `editset.apply <file> [--dry-run]` | Apply with checksum verification |
+
+## Case Preservation
+
+The tool preserves case during renames:
+
+| Original | Pattern | Replacement | Result |
+|----------|---------|-------------|--------|
+| `vault` | `vault` | `repo` | `repo` |
+| `Vault` | `vault` | `repo` | `Repo` |
+| `VAULT` | `vault` | `repo` | `REPO` |
+| `vaultPath` | `vault` | `repo` | `repoPath` |
 
 ## Safety Check
 
 **Before making batch changes, ensure they can be undone.**
 
 ```bash
-# Check if in git repo
 git rev-parse --is-inside-work-tree 2>/dev/null
-
-# Check for uncommitted changes
 git status --porcelain
 ```
 
 | Situation | Action |
 |-----------|--------|
 | Git repo, clean working tree | ✅ Proceed |
-| Git repo, uncommitted changes | ⚠️ Ask user to commit first or stash |
-| Git worktree | ✅ Proceed (isolated by design) |
-| Not a git repo | ⚠️ Warn user: no undo available, confirm before proceeding |
-
-If changes are uncommitted, ask:
-```
-You have uncommitted changes. Batch operations affect many files.
-Options:
-1. Commit current changes first (recommended)
-2. Proceed anyway (can use git checkout to revert)
-3. Cancel
-```
+| Git repo, uncommitted changes | ⚠️ Ask user to commit first |
+| Not a git repo | ⚠️ Warn: no undo available |
 
 ## Context Gathering
 
-Before asking any questions, gather project context:
+Before making changes, gather project context:
 
 1. **Read CLAUDE.md** - look for:
    - Mentioned migrations or refactoring plans
    - ADR references
    - Terminology notes
-   - Deprecated patterns
 
-2. **Check for migration scripts** (optional reference):
+2. **Check for migration scripts** (optional):
    - `scripts/check-migration.ts` or similar
-   - These may have ALLOWED_PATTERNS that indicate known exclusions
-
-3. **Read relevant ADRs** if mentioned in CLAUDE.md
-
-## Deciding What to Ask
-
-| Context Clarity | Action |
-|-----------------|--------|
-| Well-documented migration (ADR, CLAUDE.md) | Apply all, no questions |
-| Clear our-concept vs external | Apply ours, skip external, one confirmation |
-| Ambiguous/mixed contexts | Group by context type, ask once per group |
-
-**Never ask item-by-item.** If you have 100+ matches:
-- Group by context (our code, external refs, URLs, etc.)
-- Ask 1-3 grouped questions max
-- Default to applying all if context is clear
+   - May have ALLOWED_PATTERNS for exclusions
 
 ## Confidence Philosophy
 
 **Be aggressive. Tests catch mistakes.**
 
-Confidence is based on **our concept vs external reference**, not code vs string/comment.
+| Context | Confidence |
+|---------|------------|
+| Our code (`const vaultRoot`) | HIGH |
+| Our compound identifier (`vaultHelper`) | HIGH |
+| Our error message (`"vault not found"`) | HIGH |
+| External reference (`"Obsidian vault"`) | LOW |
+| URL/path (`vault.example.com`) | LOW |
 
-| Context | Example | Confidence |
-|---------|---------|------------|
-| Our code | `const vaultRoot = ...` | HIGH |
-| Our compound identifier | `vaultHelper`, `byVault` | HIGH |
-| Our error message | `"vault not found"` | HIGH |
-| Our comment | `// handle vault sync` | HIGH |
-| Our docs | `# Vault Guide` | HIGH |
-| External reference | `"Obsidian vault"` | LOW |
-| External docs | `// Obsidian stores data in vaults` | LOW |
-| URL/path | `https://vault.example.com` | LOW |
+**Default to HIGH** unless clearly external.
 
-**Default to HIGH** unless the context clearly refers to an external system.
+## Why ast-grep Fails for TypeScript Identifiers
 
-If project has ALLOWED_PATTERNS (e.g., check-migration.ts), trust those exclusions.
-
-## Choosing the Right Tool
-
-**CRITICAL for TypeScript**: Choose the right tool based on what you're renaming.
-
-| What you're renaming | Tool | Why |
-|---------------------|------|-----|
-| **TypeScript identifier** (variable, function, type, interface property) | ts-morph | Type-aware, renames ALL references including destructuring |
-| **String literal** in code | ast-grep | Pattern matching, not a symbol |
-| **Comment/doc text** | ast-grep or Edit | Not a symbol |
-| **Import path** | ast-grep | String matching |
-| **Markdown/text** | Edit replace_all | Plain text |
-
-### Why ast-grep Fails for TypeScript Identifiers
-
-ast-grep does AST pattern matching but **doesn't understand TypeScript's type system**:
+ast-grep misses TypeScript-specific patterns:
 
 ```typescript
 // ast-grep renames this ✓
@@ -132,117 +163,41 @@ const vaultDir = "/path"
 
 // But MISSES these ✗
 interface TestEnv { vaultDir: string }  // property definition
-({ vaultDir }) => { ... }               // destructuring pattern
+({ vaultDir }) => { ... }               // destructuring
 ```
 
-**Result**: Broken code with mismatched names and 380+ type errors.
+**Rule**: If it shows up in "Find All References" in your IDE, use ts-morph.
 
-**Rule of thumb**: If it shows up in "Find All References" in your IDE, use ts-morph.
+## Text/Markdown Operations
 
-## Search Tools
+For non-code files, use Edit with `replace_all`:
 
-**For TypeScript identifiers** - use ts-morph to find references:
-```bash
-bun run vendor/beorn-claude-tools/plugins/batch/scripts/ts-rename.ts \
-  <file> <line> <symbol> <newName> --dry-run
-```
-
-**For code patterns** - use ast-grep:
-```bash
-ast-grep run -p "oldName" -l typescript --json=stream packages/ 2>/dev/null
-```
-
-**For text/markdown** - use Grep tool:
-```typescript
-Grep({ pattern: "oldName", path: "packages/", output_mode: "content", "-C": 3 })
-```
-
-## Apply Tools
-
-**For TypeScript identifiers** - use ts-morph (in scripts/ts-rename.ts):
-```bash
-# Preview first
-bun run vendor/beorn-claude-tools/plugins/batch/scripts/ts-rename.ts \
-  src/types.ts 42 oldName newName --dry-run
-
-# Then apply
-bun run vendor/beorn-claude-tools/plugins/batch/scripts/ts-rename.ts \
-  src/types.ts 42 oldName newName
-```
-
-**For code patterns** - use ast-grep bulk mode:
-```bash
-ast-grep run -p "oldName" -r "newName" -l typescript -U packages/
-```
-
-**For text/markdown** - use Edit tool with replace_all:
 ```typescript
 Edit({
-  file_path: match.file,
-  old_string: "oldName",
-  new_string: "newName",
+  file_path: "docs/README.md",
+  old_string: "vault",
+  new_string: "repo",
   replace_all: true
 })
 ```
 
-## Verify
+## Pattern Operations (ast-grep)
 
-**MANDATORY for TypeScript**: Check types after ANY batch change:
+For code patterns (not identifiers):
 
 ```bash
-# Check for type errors IMMEDIATELY after batch changes
-bun tsc --noEmit  # or: npx tsc --noEmit
+# Search
+ast-grep run -p "console.log($MSG)" -l typescript --json=stream packages/
 
-# If type errors, STOP and investigate before continuing
-# Partial renames create broken code that tests won't catch
+# Replace
+ast-grep run -p "console.log($MSG)" -r "debug($MSG)" -l typescript -U packages/
 ```
-
-Then run project verification:
-```bash
-# Bun projects
-bun fix && bun run test:fast
-```
-
-Report summary:
-```
-Applied 765 changes across 93 files.
-Type check: PASSED (0 errors)
-Verification: PASSED (all tests pass)
-```
-
-## When to Ask User
-
-Only ask if there's genuine ambiguity:
-- **Different concept**: "Obsidian vault" (external system, not our term)
-- **URL/path**: `https://vault.example.com` (might be intentional)
-- **User explicitly said** to review certain patterns
-
-For terminology migrations, default to **apply all**.
-
-## Supported Operations
-
-| Operation | Tool | File types |
-|-----------|------|------------|
-| **TypeScript identifier rename** | ts-rename.ts (ts-morph) | .ts, .tsx |
-| Code pattern replacement | ast-grep -U | .ts, .tsx, .js, .py |
-| Text search-replace | Edit replace_all | .md, .txt, any text |
-| Type-safe renames (MCP) | mcp-refactor-typescript | TypeScript |
-| File renaming | Bash mv | Any (future) |
-
-## AST Pattern Syntax (ast-grep)
-
-| Pattern | Matches |
-|---------|---------|
-| `$VAR` | Single identifier/expression |
-| `$$$ARGS` | Multiple nodes (spread) |
-| `console.log($MSG)` | Function call with one arg |
-| `import { $IMPORTS } from "$MOD"` | Import statement |
 
 ## Important
 
-1. **Choose the right tool** - ts-morph for TS identifiers, ast-grep for patterns
-2. **Always run tsc** - Check types after batch changes, before running tests
-3. **Be aggressive** - apply all matches, let tests catch mistakes
-4. **Use bulk mode** - ts-morph for symbols, ast-grep -U for patterns, Edit replace_all for text
-5. **Trust the tests** - "No refactoring tool guarantees behavior preservation. Your test suite does."
-6. **Check for project scripts** - check-migration.ts tells you exactly what to fix
+1. **Use editset workflow** for TypeScript identifiers
+2. **Always run tsc** after batch changes
+3. **Check conflicts first** with `--check-conflicts`
+4. **Preview with --dry-run** before applying
+5. **Trust checksums** - editset won't apply to modified files
+6. **Be aggressive** - apply all matches, let tests catch mistakes

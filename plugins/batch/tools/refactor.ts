@@ -15,17 +15,21 @@
  *   editset.verify <file>             Verify editset can be applied
  */
 
-import { getProject, getSymbolAt, getReferences, findSymbols, computeNewName } from "./lib/symbols"
+// Import ts-morph backend (registers itself)
 import {
+  getProject,
+  getSymbolAt,
+  getReferences,
+  findSymbols,
   createRenameProposal,
   createBatchRenameProposal,
   createBatchRenameProposalFiltered,
   checkConflicts,
-  filterEditset,
-  saveEditset,
-  loadEditset,
-} from "./lib/editset"
-import { applyEditset, verifyEditset } from "./lib/apply"
+} from "./lib/backends/ts-morph"
+
+// Import core utilities
+import { filterEditset, saveEditset, loadEditset } from "./lib/core/editset"
+import { applyEditset, verifyEditset } from "./lib/core/apply"
 
 const args = process.argv.slice(2)
 const command = args[0]

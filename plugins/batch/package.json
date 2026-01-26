@@ -1,6 +1,7 @@
 {
-  "name": "@beorn/claude-refactor",
+  "name": "@beorn/claude-batch",
   "version": "0.1.0",
+  "description": "Unified batch refactoring plugin for Claude Code",
   "type": "module",
   "scripts": {
     "refactor": "bun tools/refactor.ts"

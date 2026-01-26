@@ -408,6 +408,86 @@ bun tools/refactor.ts editset.apply editset.json --dry-run
 bun tsc --noEmit  # Types pass after refactoring
 ```
 
+## Learnings from Vault→Repo Migration Attempts
+
+### Critical Bugs Discovered
+
+These bugs caused 4 failed migration attempts before being identified. Each requires a specific test fixture.
+
+#### Bug 1: Local Variables Missing (`getVariableDeclarations()` limitation)
+
+**Symptom**: `Cannot find name 'vaultRoot'` - definitions at function-local scope not found
+
+**Root Cause**: `sourceFile.getVariableDeclarations()` only returns **top-level** declarations, not variables inside functions/blocks.
+
+**Fix**: Use `sourceFile.forEachDescendant()` to find all `Node.isVariableDeclaration()` nodes.
+
+```typescript
+// ❌ BROKEN: Only finds top-level
+for (const decl of sourceFile.getVariableDeclarations()) { ... }
+
+// ✅ FIXED: Finds all scopes
+sourceFile.forEachDescendant((node) => {
+  if (Node.isVariableDeclaration(node)) { ... }
+})
+```
+
+#### Bug 2: Destructuring Patterns as Symbol Names
+
+**Symptom**: Safe rename list contained `"{ boardState, layout, vault, dispatchBoard }"` as a symbol name
+
+**Root Cause**: `varDecl.getName()` returns the entire destructuring pattern text, not individual identifiers.
+
+**Fix**: Check `Node.isIdentifier(nameNode)` before treating as symbol. For binding patterns, extract individual `BindingElement` identifiers.
+
+```typescript
+const nameNode = node.getNameNode()
+if (Node.isIdentifier(nameNode)) {
+  // Simple variable: const foo = ...
+  addMatch(nameNode, "variable")
+} else if (Node.isObjectBindingPattern(nameNode)) {
+  // Destructuring: const { foo, bar } = ...
+  extractBindingElements(nameNode)
+}
+```
+
+#### Bug 3: Parameter Destructuring Different from Variable Destructuring
+
+**Symptom**: `{ vaultDir }` in arrow function parameters renamed, but usages inside function body weren't
+
+**Root Cause**: Destructuring in function parameters uses `ParameterDeclaration` nodes, not `VariableDeclaration` nodes.
+
+**Fix**: Handle both `Node.isVariableDeclaration()` AND `Node.isParameterDeclaration()` with same binding extraction logic.
+
+```typescript
+// Need BOTH of these:
+if (Node.isVariableDeclaration(node)) { ... }
+if (Node.isParameterDeclaration(node)) { ... }  // Arrow function params!
+```
+
+#### Bug 4: Partial Migration Conflict Explosion
+
+**Symptom**: After fixing bugs 1-3, found 276 symbols but 273 had conflicts
+
+**Root Cause**: The codebase was **already partially migrated**. Many `repo*` symbols exist alongside `vault*`. The conflict detector correctly identifies that renaming `vaultDir` → `repoDir` conflicts with existing `repoDir` variables in the same scope.
+
+**Implication**: For terminology migrations that are partially complete:
+1. Conflict detection is too aggressive (local scope conflicts aren't dangerous)
+2. Need scope-aware conflict detection OR manual review per-conflict
+3. Alternative: Use `--skip` flag extensively to exclude already-migrated areas
+
+### Test Fixtures Required
+
+Based on these bugs, we need fixtures that exercise:
+
+1. **Local variables inside functions** (Bug 1)
+2. **Object destructuring in variable declarations** (Bug 2)
+3. **Array destructuring in variable declarations** (Bug 2)
+4. **Object destructuring in function parameters** (Bug 3)
+5. **Arrow function parameter destructuring** (Bug 3)
+6. **Existing symbols with target name** (Bug 4 - conflict detection)
+7. **Partial migration state** (Bug 4 - old and new names coexist)
+
 ## Test Suite
 
 ### Directory Structure
@@ -416,6 +496,13 @@ bun tsc --noEmit  # Types pass after refactoring
 plugins/batch/
 └── tests/
     ├── fixtures/                    # Test fixtures
+    │   ├── edge-cases/              # Edge case fixtures from migration learnings
+    │   │   ├── tsconfig.json
+    │   │   └── src/
+    │   │       ├── local-vars.ts    # Bug 1: Local variables in functions
+    │   │       ├── destructure.ts   # Bug 2: Destructuring patterns
+    │   │       ├── params.ts        # Bug 3: Parameter destructuring
+    │   │       └── partial.ts       # Bug 4: Partial migration state
     │   ├── simple-project/          # Small TS project for fast tests
     │   │   ├── tsconfig.json
     │   │   └── src/
@@ -447,6 +534,110 @@ plugins/batch/
     │
     └── cli/
         └── commands.test.ts         # CLI command parsing
+```
+
+### Edge Case Fixture Files
+
+These fixtures exercise the bugs discovered during migration attempts.
+
+#### edge-cases/src/local-vars.ts (Bug 1)
+```typescript
+// Tests: Local variables inside functions (not just top-level)
+export function processVault() {
+  const vaultRoot = "/path/to/vault"  // Bug 1: Must find this
+  const vaultPath = vaultRoot + "/data"
+
+  function nested() {
+    const vaultDir = vaultRoot  // Bug 1: Must find nested too
+    return vaultDir
+  }
+
+  return { vaultPath, nested }
+}
+
+// Top-level (always found - this is the baseline)
+const topLevelVault = "vault"
+```
+
+#### edge-cases/src/destructure.ts (Bug 2)
+```typescript
+// Tests: Destructuring patterns in variable declarations
+interface VaultConfig {
+  vaultDir: string
+  vaultName: string
+}
+
+// Object destructuring - must find individual identifiers
+const config: VaultConfig = { vaultDir: "/path", vaultName: "test" }
+const { vaultDir, vaultName } = config  // Bug 2: Must find vaultDir, vaultName separately
+
+// Array destructuring
+const vaultItems = ["item1", "item2"]
+const [firstVaultItem, secondVaultItem] = vaultItems  // Bug 2: Must find each
+
+// Nested destructuring
+const { vaultDir: renamedVaultDir } = config  // Bug 2: Only rename renamedVaultDir
+
+// Should work with usage after destructuring
+console.log(vaultDir, vaultName, firstVaultItem)
+```
+
+#### edge-cases/src/params.ts (Bug 3)
+```typescript
+// Tests: Parameter destructuring (arrow functions & regular functions)
+interface Context {
+  vaultPath: string
+  vaultRoot: string
+}
+
+// Arrow function with destructured parameter
+const processContext = ({ vaultPath, vaultRoot }: Context) => {
+  // Bug 3: vaultPath usage inside must be renamed too
+  console.log(vaultPath)
+  return vaultRoot
+}
+
+// Regular function with destructured parameter
+function handleContext({ vaultPath }: Context) {
+  return vaultPath  // Bug 3: This must be renamed
+}
+
+// Async arrow function
+const asyncProcess = async ({ vaultPath }: Context) => {
+  await Promise.resolve(vaultPath)  // Bug 3: This must be renamed
+}
+
+// Callback with destructured params
+const items = [{ vaultPath: "/a" }, { vaultPath: "/b" }]
+items.forEach(({ vaultPath }) => {
+  console.log(vaultPath)  // Bug 3: All must be renamed
+})
+```
+
+#### edge-cases/src/partial.ts (Bug 4)
+```typescript
+// Tests: Partial migration state (both old and new names exist)
+
+// Old names (should be renamed)
+const vaultDir = "/old/path"
+const vaultRoot = "/old/root"
+
+// New names ALREADY EXIST (conflict detection should flag these)
+const repoDir = "/new/path"  // Bug 4: Conflict with vaultDir → repoDir
+const repoRoot = "/new/root"  // Bug 4: Conflict with vaultRoot → repoRoot
+
+// Function that uses both old and new
+function migrate() {
+  // Renaming vaultDir → repoDir would shadow/conflict
+  console.log(vaultDir, repoDir)
+}
+
+// Local scope conflict (should be detected)
+function localConflict() {
+  const vaultName = "old"
+  const repoName = "new"  // Bug 4: Local conflict
+  return { vaultName, repoName }
+}
 ```
 
 ### Core Tests
@@ -600,6 +791,99 @@ describe("findSymbols", () => {
     for (let i = 1; i < symbols.length; i++) {
       expect(symbols[i-1].refCount).toBeGreaterThanOrEqual(symbols[i].refCount)
     }
+  })
+})
+
+// EDGE CASE TESTS (from migration learnings)
+describe("findSymbols edge cases", () => {
+  const project = createTestProject("edge-cases")
+
+  // Bug 1: Local variables
+  test("finds local variables inside functions", () => {
+    const symbols = findSymbols(project, /vaultRoot/i)
+    // Should find BOTH: top-level and function-local vaultRoot
+    const localVaultRoots = symbols.filter(s =>
+      s.file.includes("local-vars.ts") && s.name === "vaultRoot"
+    )
+    expect(localVaultRoots.length).toBeGreaterThanOrEqual(1)
+  })
+
+  test("finds nested function local variables", () => {
+    const symbols = findSymbols(project, /vaultDir/i)
+    // Should find vaultDir inside nested() function
+    expect(symbols.some(s =>
+      s.file.includes("local-vars.ts") && s.name === "vaultDir"
+    )).toBe(true)
+  })
+
+  // Bug 2: Destructuring patterns
+  test("finds individual identifiers from object destructuring", () => {
+    const symbols = findSymbols(project, /vaultDir/i)
+    // Should find vaultDir from: const { vaultDir, vaultName } = config
+    expect(symbols.some(s =>
+      s.file.includes("destructure.ts") && s.name === "vaultDir"
+    )).toBe(true)
+  })
+
+  test("does NOT include destructuring pattern text as symbol name", () => {
+    const symbols = findSymbols(project, /vault/i)
+    // Should NOT have symbols named "{ vaultDir, vaultName }"
+    expect(symbols.some(s => s.name.includes("{"))).toBe(false)
+    expect(symbols.some(s => s.name.includes(","))).toBe(false)
+  })
+
+  test("finds array destructuring elements", () => {
+    const symbols = findSymbols(project, /firstVaultItem/i)
+    expect(symbols.some(s => s.name === "firstVaultItem")).toBe(true)
+  })
+
+  // Bug 3: Parameter destructuring
+  test("finds destructured arrow function parameters", () => {
+    const symbols = findSymbols(project, /vaultPath/i)
+    // Should find vaultPath from: ({ vaultPath }) => { ... }
+    const paramSymbols = symbols.filter(s =>
+      s.file.includes("params.ts") && s.kind === "parameter"
+    )
+    expect(paramSymbols.length).toBeGreaterThan(0)
+  })
+
+  test("finds async arrow function destructured parameters", () => {
+    const symbols = findSymbols(project, /vaultPath/i)
+    // Should find ALL occurrences including async arrow functions
+    expect(symbols.filter(s => s.file.includes("params.ts")).length).toBeGreaterThan(2)
+  })
+
+  test("finds callback destructured parameters", () => {
+    const symbols = findSymbols(project, /vaultPath/i)
+    // Should find vaultPath from: items.forEach(({ vaultPath }) => ...)
+    expect(symbols.some(s =>
+      s.file.includes("params.ts") && s.name === "vaultPath"
+    )).toBe(true)
+  })
+})
+
+describe("checkConflicts edge cases", () => {
+  const project = createTestProject("edge-cases")
+
+  // Bug 4: Partial migration conflicts
+  test("detects conflict when target name already exists", () => {
+    const report = checkConflicts(project, /vaultDir/i, "repo")
+    // partial.ts has both vaultDir and repoDir
+    expect(report.conflicts.some(c =>
+      c.from === "vaultDir" && c.to === "repoDir"
+    )).toBe(true)
+  })
+
+  test("detects local scope conflicts", () => {
+    const report = checkConflicts(project, /vaultName/i, "repo")
+    // localConflict() function has both vaultName and repoName
+    expect(report.conflicts.length).toBeGreaterThan(0)
+  })
+
+  test("conflict report includes existing symbol location", () => {
+    const report = checkConflicts(project, /vaultDir/i, "repo")
+    const conflict = report.conflicts.find(c => c.from === "vaultDir")
+    expect(conflict?.existingSymbol).toContain("partial.ts")
   })
 })
 ```
@@ -804,3 +1088,68 @@ bun test tests/core tests/backends
 # Run integration tests (slower)
 bun test tests/integration
 ```
+
+## Bead Structure for Refactoring Work
+
+### Current Beads
+
+| Bead ID | Title | Status | Action |
+|---------|-------|--------|--------|
+| km-domain.7 | Vault→Repo terminology migration | in_progress | **Keep open** - actual migration |
+| km-repo1 | (if exists) | duplicate | **Close** - duplicate of km-domain.7 |
+
+### Recommended New Beads
+
+Create these beads to track the refactoring tool improvements:
+
+```bash
+# 1. Fix the core bugs first
+bd create --type=task --title="Fix findSymbols: local variables and destructuring" \
+  --body="Bugs discovered during vault→repo migration:
+- Bug 1: getVariableDeclarations() misses function-local vars
+- Bug 2: Destructuring patterns return full text as name
+- Bug 3: Parameter destructuring not handled
+See PLAN.md 'Learnings' section for details and fixes."
+
+# 2. Add conflict detection improvements
+bd create --type=task --title="Improve conflict detection for partial migrations" \
+  --body="Bug 4: Partial migration causes conflict explosion.
+Current conflict detection is too strict - local scope conflicts
+should be handled differently than type-level conflicts.
+Options:
+1. Scope-aware conflict detection
+2. --allow-local-conflicts flag
+3. Better conflict reporting with context"
+
+# 3. Create test fixtures
+bd create --type=task --title="Add edge case test fixtures for refactor tool" \
+  --body="Create fixtures/edge-cases/ with:
+- local-vars.ts (Bug 1)
+- destructure.ts (Bug 2)
+- params.ts (Bug 3)
+- partial.ts (Bug 4)
+See PLAN.md 'Edge Case Fixture Files' section."
+
+# 4. Merge plugins (optional - lower priority)
+bd create --type=task --title="Merge refactor plugin into batch plugin" \
+  --body="Create unified plugins/batch/ with backend abstraction.
+See PLAN.md for full structure and implementation steps.
+Depends on: bugs fixed, tests passing."
+```
+
+### Workflow for Future Sessions
+
+1. **Start**: `bd list` to see open beads
+2. **Claim**: `bd work <id>` before starting
+3. **Work**: Follow PLAN.md, update beads as you go
+4. **Test**: Run edge case tests after fixes
+5. **Verify**: `bun tsc --noEmit` on test fixtures
+6. **Complete**: `bd close <id>` with verification evidence
+
+### Migration Execution Order
+
+1. Fix bugs in `symbols.ts` (bead: fix findSymbols)
+2. Add edge case fixtures and tests (bead: test fixtures)
+3. Run tests, verify all pass
+4. Retry vault→repo migration with fixed tool (bead: km-domain.7)
+5. Optionally merge plugins (bead: merge plugins)

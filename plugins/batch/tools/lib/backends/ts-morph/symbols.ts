@@ -1,19 +1,6 @@
 import { Project, Node, SourceFile } from "ts-morph"
-import { createHash } from "crypto"
-import type { SymbolInfo, SymbolMatch, Reference } from "./types"
-
-let cachedProject: Project | null = null
-
-export function getProject(tsConfigPath = "tsconfig.json"): Project {
-  if (!cachedProject) {
-    cachedProject = new Project({ tsConfigFilePath: tsConfigPath })
-  }
-  return cachedProject
-}
-
-export function resetProject(): void {
-  cachedProject = null
-}
+import type { SymbolInfo, SymbolMatch, Reference } from "../../core/types"
+import { computeChecksum, computeRefId } from "../../core/apply"
 
 /**
  * Get symbol info at a specific location
@@ -224,38 +211,21 @@ export function findSymbols(project: Project, pattern: RegExp): SymbolMatch[] {
 }
 
 /**
- * Rename a symbol and return the edits (without saving)
+ * Case-preserving replacement for terminology migrations
  */
-export function renameSymbol(
-  project: Project,
-  symbolKey: string,
-  newName: string
-): { edits: Array<{ file: string; offset: number; length: number; replacement: string }> } {
-  const [filePath, lineStr, colStr] = symbolKey.split(":")
-  const line = parseInt(lineStr, 10)
-  const column = parseInt(colStr, 10)
-
-  const sourceFile = project.getSourceFile(filePath)
-  if (!sourceFile) throw new Error(`File not found: ${filePath}`)
-
-  const pos = sourceFile.compilerNode.getPositionOfLineAndCharacter(line - 1, column - 1)
-  const node = findIdentifierAt(sourceFile, pos)
-  if (!node) throw new Error(`Symbol not found at ${filePath}:${line}:${column}`)
-
-  // Perform rename
-  if (!Node.isRenameable(node)) {
-    throw new Error("Node is not renameable")
-  }
-  node.rename(newName)
-
-  // Collect edits from modified files
-  const edits: Array<{ file: string; offset: number; length: number; replacement: string }> = []
-
-  // Note: ts-morph doesn't expose individual edits easily.
-  // For now, we track which files were modified.
-  // In a full implementation, we'd use the LanguageService's findRenameLocations.
-
-  return { edits }
+export function computeNewName(oldName: string, pattern: RegExp, replacement: string): string {
+  return oldName.replace(pattern, (match) => {
+    // SCREAMING_CASE: entire match is uppercase
+    if (match === match.toUpperCase() && match.length > 1) {
+      return replacement.toUpperCase()
+    }
+    // PascalCase: first char is uppercase
+    if (match[0] === match[0].toUpperCase()) {
+      return replacement[0].toUpperCase() + replacement.slice(1)
+    }
+    // camelCase/lowercase
+    return replacement.toLowerCase()
+  })
 }
 
 // Helper functions
@@ -291,37 +261,4 @@ function getSymbolKind(
   if (Node.isVariableDeclaration(parent)) return "variable"
 
   return "variable"
-}
-
-export function computeChecksum(content: string): string {
-  return createHash("sha256").update(content).digest("hex").slice(0, 12)
-}
-
-export function computeRefId(
-  file: string,
-  startLine: number,
-  startCol: number,
-  endLine: number,
-  endCol: number
-): string {
-  const input = `${file}:${startLine}:${startCol}:${endLine}:${endCol}`
-  return createHash("sha256").update(input).digest("hex").slice(0, 8)
-}
-
-/**
- * Case-preserving replacement for terminology migrations
- */
-export function computeNewName(oldName: string, pattern: RegExp, replacement: string): string {
-  return oldName.replace(pattern, (match) => {
-    // SCREAMING_CASE: entire match is uppercase
-    if (match === match.toUpperCase() && match.length > 1) {
-      return replacement.toUpperCase()
-    }
-    // PascalCase: first char is uppercase
-    if (match[0] === match[0].toUpperCase()) {
-      return replacement[0].toUpperCase() + replacement.slice(1)
-    }
-    // camelCase/lowercase
-    return replacement.toLowerCase()
-  })
 }

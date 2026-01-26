@@ -1,6 +1,27 @@
 import { readFileSync, writeFileSync, existsSync } from "fs"
+import { createHash } from "crypto"
 import type { Editset, ApplyOutput, Edit } from "./types"
-import { computeChecksum } from "./symbols"
+
+/**
+ * Compute SHA256 checksum of content (first 12 chars)
+ */
+export function computeChecksum(content: string): string {
+  return createHash("sha256").update(content).digest("hex").slice(0, 12)
+}
+
+/**
+ * Compute stable reference ID from location
+ */
+export function computeRefId(
+  file: string,
+  startLine: number,
+  startCol: number,
+  endLine: number,
+  endCol: number
+): string {
+  const input = `${file}:${startLine}:${startCol}:${endLine}:${endCol}`
+  return createHash("sha256").update(input).digest("hex").slice(0, 8)
+}
 
 /**
  * Apply an editset with checksum verification
