@@ -60,6 +60,7 @@ The plugin uses a prioritized backend system - higher priority backends handle f
 |---------|----------|------------|----------|
 | **ts-morph** | 100 | .ts, .tsx, .js, .jsx | Type-aware symbol renames |
 | **ast-grep** | 50 | .go, .rs, .py, .rb, .json, .yaml | Structural pattern matching |
+| **wikilink** | 40 | .md, .markdown, .mdx | Wiki link updates (Obsidian, Foam, etc.) |
 | **ripgrep** | 10 | * (any file) | Fast text search/replace |
 
 ```typescript
@@ -118,6 +119,14 @@ bun tools/refactor.ts <command> [options]
 | `pattern.find --pattern <p> [--glob] [--backend]` | Find structural patterns | `Reference[]` |
 | `pattern.replace --pattern <p> --replace <r> [--glob] [--backend] [-o]` | Create pattern replace editset | `ProposeOutput` |
 | `backends.list` | List available backends | `Backend[]` |
+
+### Wiki-Link Commands (Obsidian, Foam, Dendron, etc.)
+
+| Command | Purpose | Output |
+|---------|---------|--------|
+| `wikilink.find --target <file> [--glob]` | Find all links to a file | `{links[], count}` |
+| `wikilink.rename --old <path> --new <path> [-o]` | Update links when renaming | `FileEditset` |
+| `wikilink.broken [--glob]` | Find broken links | `{brokenLinks[], count}` |
 
 ### Editset Commands
 
@@ -204,6 +213,30 @@ bun tools/refactor.ts pattern.replace \
 bun tools/refactor.ts editset.apply editset.json --dry-run
 bun tools/refactor.ts editset.apply editset.json
 ```
+
+### Example: Wiki File Rename (Obsidian/Foam)
+
+```bash
+# Find all links pointing to "old-note.md"
+bun tools/refactor.ts wikilink.find --target old-note.md
+
+# Rename file and update all [[old-note]] links to [[new-note]]
+bun tools/refactor.ts wikilink.rename --old old-note.md --new new-note.md -o wikilink-editset.json
+
+# Preview and apply
+bun tools/refactor.ts file.apply wikilink-editset.json --dry-run
+bun tools/refactor.ts file.apply wikilink-editset.json
+
+# Find broken links (links to non-existent files)
+bun tools/refactor.ts wikilink.broken
+```
+
+**Supported link formats:**
+- `[[note]]` - basic wikilink
+- `[[note|alias]]` - with display text
+- `[[note#heading]]` - with heading reference
+- `![[embed]]` - embeds (Obsidian)
+- `[text](path.md)` - standard markdown
 
 ---
 

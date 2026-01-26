@@ -35,6 +35,11 @@ import {
 } from "./lib/backends/ts-morph"
 import { findPatterns as astGrepFindPatterns, createPatternReplaceProposal as astGrepReplace } from "./lib/backends/ast-grep"
 import { findPatterns as rgFindPatterns, createPatternReplaceProposal as rgReplace } from "./lib/backends/ripgrep"
+import {
+  findLinksToFile,
+  createFileRenameEditset,
+  findBrokenLinks,
+} from "./lib/backends/wikilink"
 import { getBackendByName, getBackends } from "./lib/backend"
 
 // Import core utilities
@@ -418,6 +423,66 @@ async function main() {
           },
         }))
       )
+      break
+    }
+
+    // Wiki-link operations (for markdown repos: Obsidian, Foam, Dendron, etc.)
+    case "wikilink.find": {
+      const target = getArg("--target")
+      const glob = getArg("--glob") || "**/*.md"
+
+      if (!target) {
+        error("Usage: wikilink.find --target <file> [--glob <glob>]")
+      }
+
+      const refs = findLinksToFile(target, ".", glob)
+      output({
+        target,
+        glob,
+        links: refs.map((r) => ({
+          file: r.file,
+          line: r.range[0],
+          preview: r.preview,
+        })),
+        count: refs.length,
+      })
+      break
+    }
+
+    case "wikilink.rename": {
+      const oldPath = getArg("--old")
+      const newPath = getArg("--new")
+      const outputFile = getArg("--output") || "wikilink-editset.json"
+
+      if (!oldPath || !newPath) {
+        error("Usage: wikilink.rename --old <path> --new <path> [--output <file>]")
+      }
+
+      const editset = createFileRenameEditset(oldPath, newPath, ".")
+      saveFileEditset(editset, outputFile)
+      output({
+        editsetPath: outputFile,
+        oldPath,
+        newPath,
+        linkCount: editset.importEdits.length,
+        fileCount: new Set(editset.importEdits.map((e) => e.file)).size,
+      })
+      break
+    }
+
+    case "wikilink.broken": {
+      const glob = getArg("--glob") || "**/*.md"
+
+      const refs = findBrokenLinks(".", glob)
+      output({
+        glob,
+        brokenLinks: refs.map((r) => ({
+          file: r.file,
+          line: r.range[0],
+          preview: r.preview,
+        })),
+        count: refs.length,
+      })
       break
     }
 

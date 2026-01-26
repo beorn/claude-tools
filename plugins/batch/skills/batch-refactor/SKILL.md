@@ -209,6 +209,270 @@ bun run test:all
 
 ---
 
+## Concrete Examples by Operation Type
+
+### Example 1: Batch File Rename
+
+**Scenario**: Rename all files containing "user-service" to "account-service"
+
+```bash
+# 1. Find files that would be renamed
+bun tools/refactor.ts file.find --pattern "user-service" --replace "account-service" --glob "**/*.ts"
+
+# 2. Check for conflicts (target files already exist?)
+bun tools/refactor.ts file.rename --pattern "user-service" --replace "account-service" \
+  --glob "**/*.ts" --check-conflicts
+
+# 3. Create editset
+bun tools/refactor.ts file.rename --pattern "user-service" --replace "account-service" \
+  --glob "**/*.ts" --output file-renames.json
+
+# 4. Preview (dry run)
+bun tools/refactor.ts file.apply file-renames.json --dry-run
+
+# 5. Apply
+bun tools/refactor.ts file.apply file-renames.json
+```
+
+**Result**:
+- `src/user-service.ts` → `src/account-service.ts`
+- `src/testing/mock-user-service.ts` → `src/testing/mock-account-service.ts`
+- `UserServiceConfig.ts` → `AccountServiceConfig.ts` (case preserved)
+
+---
+
+### Example 2: Import Path Updates (after file renames)
+
+**Scenario**: Update all imports that reference renamed files
+
+```bash
+# After renaming user-service.ts → account-service.ts, update imports:
+bun tools/refactor.ts pattern.replace \
+  --pattern "user-service" \
+  --replace "account-service" \
+  --glob "**/*.ts" \
+  --backend ripgrep \
+  --output import-updates.json
+
+bun tools/refactor.ts editset.apply import-updates.json --dry-run
+bun tools/refactor.ts editset.apply import-updates.json
+```
+
+**Before**:
+```typescript
+import { createUser } from "./user-service"
+import { UserService } from "../services/user-service"
+```
+
+**After**:
+```typescript
+import { createUser } from "./account-service"
+import { UserService } from "../services/account-service"
+```
+
+---
+
+### Example 3: TypeScript Symbol Rename (ts-morph)
+
+**Scenario**: Rename function `createWidget` to `createGadget` across codebase
+
+```bash
+# 1. Check for conflicts (does createGadget already exist?)
+bun tools/refactor.ts rename.batch --pattern "createWidget" --replace "createGadget" --check-conflicts
+
+# 2. Create editset
+bun tools/refactor.ts rename.batch --pattern "createWidget" --replace "createGadget" \
+  --output symbol-renames.json
+
+# 3. Preview
+bun tools/refactor.ts editset.apply symbol-renames.json --dry-run
+
+# 4. Apply
+bun tools/refactor.ts editset.apply symbol-renames.json
+```
+
+**Handles correctly**:
+```typescript
+// Function declaration
+export function createWidget(config: Config) { }  → createGadget
+
+// Arrow function
+const createWidget = (opts) => { }  → createGadget
+
+// Destructuring
+const { createWidget } = api  → createGadget
+
+// Parameter
+function init({ createWidget }: Deps) { }  → createGadget
+
+// Type reference
+type Factory = typeof createWidget  → createGadget
+```
+
+---
+
+### Example 4: Type/Interface Rename
+
+**Scenario**: Rename `ApiClient` to `HttpClient` across codebase
+
+```bash
+# Check conflicts
+bun tools/refactor.ts rename.batch --pattern "ApiClient" --replace "HttpClient" --check-conflicts
+
+# Create and apply
+bun tools/refactor.ts rename.batch --pattern "ApiClient" --replace "HttpClient" \
+  --output type-renames.json
+bun tools/refactor.ts editset.apply type-renames.json
+```
+
+**Handles correctly**:
+```typescript
+// Interface definition
+export interface ApiClient { }  → HttpClient
+
+// Type alias
+type Client = ApiClient  → HttpClient
+
+// Variable type annotation
+const client: ApiClient = ...  → HttpClient
+
+// Generic constraint
+function fetch<T extends ApiClient>()  → HttpClient
+
+// Import
+import type { ApiClient } from "./api"  → HttpClient
+```
+
+---
+
+### Example 5: Text/Comment/String Replace (ripgrep)
+
+**Scenario**: Update documentation and comments from "widget" to "gadget"
+
+```bash
+# Markdown docs
+bun tools/refactor.ts pattern.replace \
+  --pattern "widget" \
+  --replace "gadget" \
+  --glob "**/*.md" \
+  --backend ripgrep \
+  --output docs-updates.json
+
+# TypeScript comments and strings
+bun tools/refactor.ts pattern.replace \
+  --pattern "widget" \
+  --replace "gadget" \
+  --glob "**/*.ts" \
+  --backend ripgrep \
+  --output comment-updates.json
+
+# Preview and apply
+bun tools/refactor.ts editset.apply docs-updates.json --dry-run
+bun tools/refactor.ts editset.apply docs-updates.json
+```
+
+**Updates**:
+```typescript
+// This creates a new widget  → gadget
+const msg = "Widget not found"  → "Gadget not found"
+/** @description Widget factory */  → Gadget factory
+```
+
+```markdown
+# Widget Guide  → Gadget Guide
+Create a widget with...  → Create a gadget with...
+```
+
+---
+
+### Example 6: Structural Pattern Replace (ast-grep)
+
+**Scenario**: Migrate Go logging from `fmt.Println` to `log.Info`
+
+```bash
+bun tools/refactor.ts pattern.replace \
+  --pattern 'fmt.Println($MSG)' \
+  --replace 'log.Info($MSG)' \
+  --glob "**/*.go" \
+  --backend ast-grep \
+  --output go-logging.json
+
+bun tools/refactor.ts editset.apply go-logging.json
+```
+
+**Before**:
+```go
+fmt.Println("Starting server")
+fmt.Println(err.Error())
+```
+
+**After**:
+```go
+log.Info("Starting server")
+log.Info(err.Error())
+```
+
+---
+
+### Example 7: Complete Terminology Migration
+
+**Scenario**: Migrate entire codebase from "user" terminology to "account"
+
+```bash
+# Phase 1: Conflict Analysis
+bun tools/refactor.ts file.rename --pattern "user" --replace "account" --check-conflicts
+bun tools/refactor.ts rename.batch --pattern "user" --replace "account" --check-conflicts
+
+# Phase 2: File Renames (FIRST)
+bun tools/refactor.ts file.rename --pattern "user" --replace "account" \
+  --glob "**/*.ts" --output phase2-files.json
+bun tools/refactor.ts file.apply phase2-files.json
+
+# Phase 3: Symbol Renames
+bun tools/refactor.ts rename.batch --pattern "user" --replace "account" \
+  --output phase3-symbols.json
+bun tools/refactor.ts editset.apply phase3-symbols.json
+
+# Phase 4: Text/Comments
+bun tools/refactor.ts pattern.replace --pattern "user" --replace "account" \
+  --glob "**/*.ts" --backend ripgrep --output phase4-text.json
+bun tools/refactor.ts editset.apply phase4-text.json
+
+# Phase 5: Documentation
+bun tools/refactor.ts pattern.replace --pattern "user" --replace "account" \
+  --glob "**/*.md" --backend ripgrep --output phase5-docs.json
+bun tools/refactor.ts editset.apply phase5-docs.json
+
+# Phase 6: Verify
+grep -ri user . --include="*.ts" | wc -l  # Should be 0
+bun tsc --noEmit
+bun fix
+bun run test:all
+```
+
+---
+
+### Example 8: Selective Rename with Filtering
+
+**Scenario**: Rename only specific occurrences, not all
+
+```bash
+# Create full editset
+bun tools/refactor.ts rename.batch --pattern "config" --replace "options" \
+  --output full-editset.json
+
+# Filter to only certain files
+bun tools/refactor.ts editset.select full-editset.json \
+  --include "src/core/**" \
+  --exclude "src/core/legacy/**" \
+  --output filtered-editset.json
+
+# Apply filtered set
+bun tools/refactor.ts editset.apply filtered-editset.json
+```
+
+---
+
 ## Case Preservation
 
 The tool preserves case during renames:
