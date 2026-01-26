@@ -1,0 +1,10 @@
+{
+  "name": "batch",
+  "version": "0.1.0",
+  "description": "Batch search, select, and transform code with confidence-based auto-apply",
+  "author": "beorn",
+  "repository": "https://github.com/beorn/beorn-claude",
+  "license": "MIT",
+  "commands": ["commands/batch.md"],
+  "mcpServers": ".mcp.json"
+}
