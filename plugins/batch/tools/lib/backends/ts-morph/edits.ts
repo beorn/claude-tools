@@ -16,13 +16,13 @@ export function createRenameProposal(
   const id = `rename-${oldName}-to-${newName}-${Date.now()}`
 
   // Generate edits from references
-  const edits = generateEditsFromRefs(project, refs, oldName, newName)
+  const edits = generateEditsFromRefs(project, refs, oldName!, newName)
 
   return {
     id,
     operation: "rename",
     symbolKey,
-    from: oldName,
+    from: oldName!,
     to: newName,
     refs,
     edits,
@@ -201,7 +201,7 @@ function generateEditsFromRefs(
     const lines = content.split("\n")
     let offset = 0
     for (let i = 0; i < ref.range[0] - 1; i++) {
-      offset += lines[i].length + 1 // +1 for newline
+      offset += lines[i]!.length + 1 // +1 for newline
     }
     offset += ref.range[1] - 1 // column offset
 

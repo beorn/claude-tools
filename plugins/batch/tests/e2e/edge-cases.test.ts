@@ -51,7 +51,7 @@ describe("E2E: Edge Cases", () => {
       const output = runRefactor(
         `symbols.find --pattern widget --tsconfig ${FIXTURES_ROOT}/tsconfig.json`
       )
-      symbols = JSON.parse(output)
+      symbols = JSON.parse(output) as typeof symbols
     })
 
     test("finds expected number of widget symbols", () => {
@@ -187,7 +187,12 @@ describe("E2E: Edge Cases", () => {
         `rename.batch --pattern widget --replace gadget --skip widgetStorage,widgetDatabase,widgetLocal --output ${editsetPath} --tsconfig ${tempDir}/tsconfig.json`
       )
 
-      const editset = JSON.parse(readFileSync(editsetPath, "utf-8"))
+      const editset = JSON.parse(readFileSync(editsetPath, "utf-8")) as {
+        refs: unknown[]
+        edits: unknown[]
+        from: string
+        to: string
+      }
       expect(editset.refs.length).toBeGreaterThan(0)
       expect(editset.edits.length).toBeGreaterThan(0)
       expect(editset.from).toBe("widget")
@@ -199,7 +204,7 @@ describe("E2E: Edge Cases", () => {
 
       // Apply the editset
       const applyOutput = runRefactor(`editset.apply ${editsetPath}`)
-      const result = JSON.parse(applyOutput)
+      const result = JSON.parse(applyOutput) as { applied: number }
       expect(result.applied).toBeGreaterThan(0)
 
       // Verify TypeScript compiles

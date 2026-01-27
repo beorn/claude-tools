@@ -73,7 +73,7 @@ function runSg(args: string[]): SgMatch[] | null {
       maxBuffer: 50 * 1024 * 1024, // 50MB buffer for large codebases
       stdio: ["pipe", "pipe", "pipe"],
     })
-    return JSON.parse(output)
+    return JSON.parse(output) as SgMatch[]
   } catch (error: unknown) {
     // ast-grep returns exit code 1 when no matches found
     const execError = error as { status?: number; stdout?: string }
@@ -146,13 +146,13 @@ function generateEdits(refs: Reference[], _replacement: string): Edit[] {
     const lines = content.split("\n")
     let startOffset = 0
     for (let i = 0; i < ref.range[0] - 1; i++) {
-      startOffset += lines[i].length + 1 // +1 for newline
+      startOffset += lines[i]!.length + 1 // +1 for newline
     }
     startOffset += ref.range[1] - 1
 
     let endOffset = 0
     for (let i = 0; i < ref.range[2] - 1; i++) {
-      endOffset += lines[i].length + 1
+      endOffset += lines[i]!.length + 1
     }
     endOffset += ref.range[3] - 1
 

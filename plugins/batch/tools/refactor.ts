@@ -210,7 +210,7 @@ async function main() {
   switch (command) {
     case "symbol.at": {
       const file = args[1]
-      const line = parseInt(args[2], 10)
+      const line = parseInt(args[2]!, 10)
       const col = parseInt(args[3] || "1", 10)
 
       if (!file || isNaN(line)) {
@@ -321,9 +321,9 @@ async function main() {
         error("Usage: editset.select <file> [--include refIds] [--exclude refIds] [--output file]")
       }
 
-      const editset = loadEditset(inputFile)
+      const editset = loadEditset(inputFile!)
       const filtered = filterEditset(editset, include, exclude)
-      saveEditset(filtered, outputFile)
+      saveEditset(filtered, outputFile!)
 
       const selectedCount = filtered.refs.filter((r) => r.selected).length
       output({
@@ -385,10 +385,10 @@ async function main() {
         error("No patch provided on stdin. Usage: editset.patch <file> <<'EOF'\n{\"refId\": \"replacement\"}\nEOF")
       }
 
-      const editset = loadEditset(inputFile)
+      const editset = loadEditset(inputFile!)
       const patch = parsePatch(stdinContent)
       const patched = applyPatch(editset, patch)
-      saveEditset(patched, outputFile)
+      saveEditset(patched, outputFile!)
 
       const selectedCount = patched.refs.filter((r) => r.selected).length
       const skippedCount = patched.refs.filter((r) => !r.selected || r.replace === null).length

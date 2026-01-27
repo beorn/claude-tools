@@ -25,7 +25,7 @@ export function parsePackageJson(content: string): PackagePathRef[] {
 
   let pkg: Record<string, unknown>
   try {
-    pkg = JSON.parse(content)
+    pkg = JSON.parse(content) as Record<string, unknown>
   } catch {
     return refs
   }

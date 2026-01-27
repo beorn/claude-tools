@@ -151,6 +151,6 @@ describe("saveEditset / loadEditset", () => {
     expect(loaded.id).toBe(editset.id)
     expect(loaded.symbolKey).toBe(editset.symbolKey)
     expect(loaded.pattern).toBe(editset.pattern)
-    expect(loaded.refs[0].range).toEqual([1, 5, 1, 10])
+    expect(loaded.refs[0]!.range).toEqual([1, 5, 1, 10])
   })
 })

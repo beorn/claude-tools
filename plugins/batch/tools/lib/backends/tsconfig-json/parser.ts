@@ -28,7 +28,7 @@ export function parseTsConfig(content: string): TsConfigPathRef[] {
   try {
     // Handle JSON with comments (JSONC) - strip comments first
     const stripped = stripJsonComments(content)
-    config = JSON.parse(stripped)
+    config = JSON.parse(stripped) as Record<string, unknown>
   } catch {
     return refs
   }

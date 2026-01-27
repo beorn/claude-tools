@@ -45,10 +45,10 @@ export function getReferences(
   contextLines = DEFAULT_CONTEXT_LINES
 ): Reference[] {
   const [filePath, lineStr, colStr, name] = symbolKey.split(":")
-  const line = parseInt(lineStr, 10)
-  const column = parseInt(colStr, 10)
+  const line = parseInt(lineStr!, 10)
+  const column = parseInt(colStr!, 10)
 
-  const sourceFile = project.getSourceFile(filePath)
+  const sourceFile = project.getSourceFile(filePath!)
   if (!sourceFile) return []
 
   const pos = sourceFile.compilerNode.getPositionOfLineAndCharacter(line - 1, column - 1)
@@ -255,8 +255,8 @@ export function computeNewName(oldName: string, pattern: RegExp, replacement: st
       return replacement.toUpperCase()
     }
     // PascalCase: first char is uppercase
-    if (match[0] === match[0].toUpperCase()) {
-      return replacement[0].toUpperCase() + replacement.slice(1)
+    if (match[0] === match[0]!.toUpperCase()) {
+      return replacement[0]!.toUpperCase() + replacement.slice(1)
     }
     // camelCase/lowercase
     return replacement.toLowerCase()

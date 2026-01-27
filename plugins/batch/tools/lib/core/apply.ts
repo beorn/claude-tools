@@ -73,7 +73,7 @@ export function applyEditset(editset: Editset, dryRun = false): ApplyOutput {
     // Verify checksum if we have refs for this file
     const refs = refsByFile.get(filePath) || []
     if (refs.length > 0) {
-      const expectedChecksum = refs[0].checksum
+      const expectedChecksum = refs[0]!.checksum
       if (currentChecksum !== expectedChecksum) {
         result.driftDetected.push({
           file: filePath,

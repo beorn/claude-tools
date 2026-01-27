@@ -166,8 +166,8 @@ function preserveCase(match: string, replacement: string): string {
     return replacement.toUpperCase()
   }
   // PascalCase: first char is uppercase
-  if (match[0] === match[0].toUpperCase()) {
-    return replacement[0].toUpperCase() + replacement.slice(1)
+  if (match[0] === match[0]!.toUpperCase()) {
+    return replacement[0]!.toUpperCase() + replacement.slice(1)
   }
   // camelCase/lowercase
   return replacement.toLowerCase()
@@ -193,7 +193,7 @@ function generateEdits(refs: Reference[], pattern: string, replacement: string):
     const lines = content.split("\n")
     let offset = 0
     for (let i = 0; i < ref.range[0] - 1; i++) {
-      offset += lines[i].length + 1 // +1 for newline
+      offset += lines[i]!.length + 1 // +1 for newline
     }
     offset += ref.range[1] - 1 // column offset (0-indexed)
 

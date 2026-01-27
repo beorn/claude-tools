@@ -55,70 +55,70 @@ describe("wikilink backend", () => {
     test("parses basic wikilink [[note]]", () => {
       const links = parseWikiLinks("Check out [[my-note]] for details.")
       expect(links.length).toBe(1)
-      expect(links[0].type).toBe("wikilink")
-      expect(links[0].target).toBe("my-note")
-      expect(links[0].heading).toBeUndefined()
-      expect(links[0].alias).toBeUndefined()
-      expect(links[0].raw).toBe("[[my-note]]")
+      expect(links[0]!.type).toBe("wikilink")
+      expect(links[0]!.target).toBe("my-note")
+      expect(links[0]!.heading).toBeUndefined()
+      expect(links[0]!.alias).toBeUndefined()
+      expect(links[0]!.raw).toBe("[[my-note]]")
     })
 
     test("parses wikilink with alias [[note|display]]", () => {
       const links = parseWikiLinks("See [[my-note|the note]] here.")
       expect(links.length).toBe(1)
-      expect(links[0].target).toBe("my-note")
-      expect(links[0].alias).toBe("the note")
+      expect(links[0]!.target).toBe("my-note")
+      expect(links[0]!.alias).toBe("the note")
     })
 
     test("parses wikilink with heading [[note#section]]", () => {
       const links = parseWikiLinks("Jump to [[my-note#introduction]].")
       expect(links.length).toBe(1)
-      expect(links[0].target).toBe("my-note")
-      expect(links[0].heading).toBe("introduction")
+      expect(links[0]!.target).toBe("my-note")
+      expect(links[0]!.heading).toBe("introduction")
     })
 
     test("parses wikilink with heading and alias [[note#section|display]]", () => {
       const links = parseWikiLinks("See [[my-note#intro|the intro]].")
       expect(links.length).toBe(1)
-      expect(links[0].target).toBe("my-note")
-      expect(links[0].heading).toBe("intro")
-      expect(links[0].alias).toBe("the intro")
+      expect(links[0]!.target).toBe("my-note")
+      expect(links[0]!.heading).toBe("intro")
+      expect(links[0]!.alias).toBe("the intro")
     })
 
     test("parses embed ![[note]]", () => {
       const links = parseWikiLinks("Embed here: ![[diagram]]")
       expect(links.length).toBe(1)
-      expect(links[0].type).toBe("embed")
-      expect(links[0].target).toBe("diagram")
+      expect(links[0]!.type).toBe("embed")
+      expect(links[0]!.target).toBe("diagram")
     })
 
     test("parses path wikilink [[folder/note]]", () => {
       const links = parseWikiLinks("See [[projects/my-project]].")
       expect(links.length).toBe(1)
-      expect(links[0].target).toBe("projects/my-project")
+      expect(links[0]!.target).toBe("projects/my-project")
     })
 
     test("parses markdown link [text](path.md)", () => {
       const links = parseWikiLinks("Check [the docs](docs/readme.md).")
       expect(links.length).toBe(1)
-      expect(links[0].type).toBe("markdown")
-      expect(links[0].target).toBe("docs/readme")
-      expect(links[0].alias).toBe("the docs")
+      expect(links[0]!.type).toBe("markdown")
+      expect(links[0]!.target).toBe("docs/readme")
+      expect(links[0]!.alias).toBe("the docs")
     })
 
     test("parses markdown link with heading [text](path.md#section)", () => {
       const links = parseWikiLinks("See [intro](readme.md#introduction).")
       expect(links.length).toBe(1)
-      expect(links[0].target).toBe("readme")
-      expect(links[0].heading).toBe("introduction")
+      expect(links[0]!.target).toBe("readme")
+      expect(links[0]!.heading).toBe("introduction")
     })
 
     test("parses multiple links", () => {
       const content = "Link to [[note-a]] and [[note-b|alias]] plus ![[embed]]."
       const links = parseWikiLinks(content)
       expect(links.length).toBe(3)
-      expect(links[0].target).toBe("note-a")
-      expect(links[1].target).toBe("note-b")
-      expect(links[2].type).toBe("embed")
+      expect(links[0]!.target).toBe("note-a")
+      expect(links[1]!.target).toBe("note-b")
+      expect(links[2]!.type).toBe("embed")
     })
 
     test("returns empty array for no links", () => {
@@ -129,61 +129,61 @@ describe("wikilink backend", () => {
 
   describe("linkMatchesTarget", () => {
     test("matches exact name", () => {
-      const link = parseWikiLinks("[[my-note]]")[0]
+      const link = parseWikiLinks("[[my-note]]")[0]!
       expect(linkMatchesTarget(link, "my-note")).toBe(true)
       expect(linkMatchesTarget(link, "other-note")).toBe(false)
     })
 
     test("matches case-insensitively", () => {
-      const link = parseWikiLinks("[[My-Note]]")[0]
+      const link = parseWikiLinks("[[My-Note]]")[0]!
       expect(linkMatchesTarget(link, "my-note")).toBe(true)
       expect(linkMatchesTarget(link, "MY-NOTE")).toBe(true)
     })
 
     test("matches with path context", () => {
-      const link = parseWikiLinks("[[my-note]]")[0]
+      const link = parseWikiLinks("[[my-note]]")[0]!
       expect(linkMatchesTarget(link, "my-note", "folder/my-note.md")).toBe(true)
     })
 
     test("matches path wikilink", () => {
-      const link = parseWikiLinks("[[folder/note]]")[0]
+      const link = parseWikiLinks("[[folder/note]]")[0]!
       expect(linkMatchesTarget(link, "note", "folder/note.md")).toBe(true)
     })
   })
 
   describe("generateReplacement", () => {
     test("generates basic wikilink", () => {
-      const link = parseWikiLinks("[[old-note]]")[0]
+      const link = parseWikiLinks("[[old-note]]")[0]!
       expect(generateReplacement(link, "new-note")).toBe("[[new-note]]")
     })
 
     test("preserves alias", () => {
-      const link = parseWikiLinks("[[old-note|display]]")[0]
+      const link = parseWikiLinks("[[old-note|display]]")[0]!
       expect(generateReplacement(link, "new-note")).toBe("[[new-note|display]]")
     })
 
     test("preserves heading", () => {
-      const link = parseWikiLinks("[[old-note#section]]")[0]
+      const link = parseWikiLinks("[[old-note#section]]")[0]!
       expect(generateReplacement(link, "new-note")).toBe("[[new-note#section]]")
     })
 
     test("preserves heading and alias", () => {
-      const link = parseWikiLinks("[[old-note#section|display]]")[0]
+      const link = parseWikiLinks("[[old-note#section|display]]")[0]!
       expect(generateReplacement(link, "new-note")).toBe("[[new-note#section|display]]")
     })
 
     test("generates embed", () => {
-      const link = parseWikiLinks("![[old-embed]]")[0]
+      const link = parseWikiLinks("![[old-embed]]")[0]!
       expect(generateReplacement(link, "new-embed")).toBe("![[new-embed]]")
     })
 
     test("generates markdown link", () => {
-      const link = parseWikiLinks("[text](old.md)")[0]
+      const link = parseWikiLinks("[text](old.md)")[0]!
       expect(generateReplacement(link, "new")).toBe("[text](new.md)")
     })
 
     test("generates markdown link with heading", () => {
-      const link = parseWikiLinks("[text](old.md#section)")[0]
+      const link = parseWikiLinks("[text](old.md#section)")[0]!
       expect(generateReplacement(link, "new")).toBe("[text](new.md#section)")
     })
   })
@@ -291,8 +291,8 @@ With heading: [[old-name#intro]]
 
         expect(editset.operation).toBe("file-rename")
         expect(editset.fileOps.length).toBe(1)
-        expect(editset.fileOps[0].oldPath).toContain("old-name.md")
-        expect(editset.fileOps[0].newPath).toContain("new-name.md")
+        expect(editset.fileOps[0]!.oldPath).toContain("old-name.md")
+        expect(editset.fileOps[0]!.newPath).toContain("new-name.md")
         expect(editset.importEdits.length).toBeGreaterThanOrEqual(2)
       } finally {
         process.chdir(cwd)

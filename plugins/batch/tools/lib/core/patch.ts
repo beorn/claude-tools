@@ -67,7 +67,7 @@ export function applyPatch(editset: Editset, patch: Patch): Editset {
  * Accepts either a full editset or a minimal patch object.
  */
 export function parsePatch(input: string): Patch {
-  const parsed = JSON.parse(input)
+  const parsed = JSON.parse(input) as { refs?: Array<{ refId?: string; replace?: string }> }
 
   // If it has refs/edits, it's a full editset - extract replace values
   if (parsed.refs && Array.isArray(parsed.refs)) {

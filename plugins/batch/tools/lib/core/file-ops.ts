@@ -51,7 +51,7 @@ export function applyReplacement(filename: string, pattern: string | RegExp, rep
     return filename.replace(new RegExp(pattern, "gi"), (match) => {
       // Preserve case: repo -> repo, Repo -> Repo, REPO -> REPO
       if (match === match.toUpperCase()) return replacement.toUpperCase()
-      if (match[0] === match[0].toUpperCase()) return replacement[0].toUpperCase() + replacement.slice(1)
+      if (match[0] === match[0]!.toUpperCase()) return replacement[0]!.toUpperCase() + replacement.slice(1)
       return replacement
     })
   }
@@ -243,14 +243,14 @@ export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()):
             const [, quote, moduleSpecifier] = match
             // Find the position of the string literal within the call
             const callStart = node.getStart()
-            const literalOffset = text.indexOf(quote)
+            const literalOffset = text.indexOf(quote!)
             const start = callStart + literalOffset
-            const end = start + quote.length + moduleSpecifier.length + quote.length
+            const end = start + quote!.length + moduleSpecifier!.length + quote!.length
 
             const edit = createImportEditFromStringLiteral(
               sourceFilePath,
               sourceFileDir,
-              moduleSpecifier,
+              moduleSpecifier!,
               start,
               end,
               fileContent,

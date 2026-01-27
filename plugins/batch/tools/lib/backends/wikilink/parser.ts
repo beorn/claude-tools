@@ -40,7 +40,7 @@ export function parseWikiLinks(content: string): WikiLink[] {
     const [raw, embed, target, heading, alias] = match
     links.push({
       type: embed === "!" ? "embed" : "wikilink",
-      target: target.trim(),
+      target: target!.trim(),
       heading: heading?.trim(),
       alias: alias?.trim(),
       raw,
@@ -52,12 +52,12 @@ export function parseWikiLinks(content: string): WikiLink[] {
   // Find markdown links [text](path.md)
   for (const match of content.matchAll(MARKDOWN_LINK_PATTERN)) {
     const [raw, alias, pathWithHeading] = match
-    const [path, heading] = pathWithHeading.split("#")
+    const [path, heading] = pathWithHeading!.split("#")
     links.push({
       type: "markdown",
-      target: path.replace(/\.md$/, ""), // Normalize to name without extension
+      target: path!.replace(/\.md$/, ""), // Normalize to name without extension
       heading: heading?.trim(),
-      alias: alias.trim(),
+      alias: alias!.trim(),
       raw,
       start: match.index!,
       end: match.index! + raw.length,
