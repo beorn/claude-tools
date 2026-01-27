@@ -2,9 +2,20 @@
  * file-ops.test.ts - Tests for batch file rename operations
  */
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test"
+import { describe, test, expect, beforeAll, beforeEach, afterAll, afterEach, spyOn } from "bun:test"
 import fs from "fs"
 import path from "path"
+
+// Silence console.error from library logging (tests use spies when they need output)
+let errorSpy: ReturnType<typeof spyOn>
+
+beforeEach(() => {
+  errorSpy = spyOn(console, "error").mockImplementation(() => {})
+})
+
+afterEach(() => {
+  errorSpy.mockRestore()
+})
 import {
   applyReplacement,
   findFilesToRename,
@@ -41,6 +52,7 @@ function cleanupFixtures() {
   }
 }
 
+// Pure function tests - no fixtures needed
 describe("applyReplacement", () => {
   test("replaces lowercase", () => {
     expect(applyReplacement("widget-loader.ts", "widget", "gadget")).toBe("gadget-loader.ts")
@@ -63,104 +75,104 @@ describe("applyReplacement", () => {
   })
 })
 
-describe("findFilesToRename", () => {
-  beforeEach(setupFixtures)
-  afterEach(cleanupFixtures)
+// Read-only tests share fixtures (setup once)
+describe("read-only file operations", () => {
+  beforeAll(setupFixtures)
+  afterAll(cleanupFixtures)
 
-  test("finds files matching pattern", async () => {
-    const ops = await findFilesToRename("widget", "gadget", "**/*.ts", FIXTURE_DIR)
+  describe("findFilesToRename", () => {
+    test("finds files matching pattern", async () => {
+      const ops = await findFilesToRename("widget", "gadget", "**/*.ts", FIXTURE_DIR)
 
-    expect(ops.length).toBe(4)
-    const paths = ops.map((op) => op.oldPath)
-    expect(paths).toContain("widget.ts")
-    expect(paths).toContain("widget-loader.ts")
-    expect(paths).toContain("WidgetConfig.ts")
-    expect(paths).toContain("testing/fake-widget.ts")
+      expect(ops.length).toBe(4)
+      const paths = ops.map((op) => op.oldPath)
+      expect(paths).toContain("widget.ts")
+      expect(paths).toContain("widget-loader.ts")
+      expect(paths).toContain("WidgetConfig.ts")
+      expect(paths).toContain("testing/fake-widget.ts")
+    })
+
+    test("computes correct new paths", async () => {
+      const ops = await findFilesToRename("widget", "gadget", "**/*.ts", FIXTURE_DIR)
+
+      const widgetOp = ops.find((op) => op.oldPath === "widget.ts")
+      expect(widgetOp?.newPath).toBe("gadget.ts")
+
+      const loaderOp = ops.find((op) => op.oldPath === "widget-loader.ts")
+      expect(loaderOp?.newPath).toBe("gadget-loader.ts")
+
+      const configOp = ops.find((op) => op.oldPath === "WidgetConfig.ts")
+      expect(configOp?.newPath).toBe("GadgetConfig.ts")
+    })
+
+    test("respects glob filter", async () => {
+      const ops = await findFilesToRename("widget", "gadget", "*.ts", FIXTURE_DIR)
+
+      // Should only find files in root, not in subdirectories
+      expect(ops.length).toBe(3)
+      const paths = ops.map((op) => op.oldPath)
+      expect(paths).not.toContain("testing/fake-widget.ts")
+    })
   })
 
-  test("computes correct new paths", async () => {
-    const ops = await findFilesToRename("widget", "gadget", "**/*.ts", FIXTURE_DIR)
+  describe("checkFileConflicts", () => {
+    test("detects target exists conflict", async () => {
+      const ops = await findFilesToRename("widget", "gadget", "**/*.ts", FIXTURE_DIR)
+      const report = checkFileConflicts(ops, FIXTURE_DIR)
 
-    const widgetOp = ops.find((op) => op.oldPath === "widget.ts")
-    expect(widgetOp?.newPath).toBe("gadget.ts")
+      // widget.ts -> gadget.ts should conflict because gadget.ts exists
+      expect(report.conflicts.length).toBeGreaterThan(0)
+      const widgetConflict = report.conflicts.find((c) => c.oldPath === "widget.ts")
+      expect(widgetConflict).toBeDefined()
+      expect(widgetConflict?.reason).toBe("target_exists")
+    })
 
-    const loaderOp = ops.find((op) => op.oldPath === "widget-loader.ts")
-    expect(loaderOp?.newPath).toBe("gadget-loader.ts")
+    test("identifies safe renames", async () => {
+      const ops = await findFilesToRename("widget", "gadget", "**/*.ts", FIXTURE_DIR)
+      const report = checkFileConflicts(ops, FIXTURE_DIR)
 
-    const configOp = ops.find((op) => op.oldPath === "WidgetConfig.ts")
-    expect(configOp?.newPath).toBe("GadgetConfig.ts")
+      // widget-loader.ts -> gadget-loader.ts should be safe
+      const loaderOp = report.safe.find((op) => op.oldPath === "widget-loader.ts")
+      expect(loaderOp).toBeDefined()
+    })
   })
 
-  test("respects glob filter", async () => {
-    const ops = await findFilesToRename("widget", "gadget", "*.ts", FIXTURE_DIR)
+  describe("createFileRenameProposal", () => {
+    test("creates editset with file ops", async () => {
+      const editset = await createFileRenameProposal("widget", "gadget", "**/*.ts", FIXTURE_DIR)
 
-    // Should only find files in root, not in subdirectories
-    expect(ops.length).toBe(3)
-    const paths = ops.map((op) => op.oldPath)
-    expect(paths).not.toContain("testing/fake-widget.ts")
+      expect(editset.operation).toBe("file-rename")
+      expect(editset.pattern).toBe("widget")
+      expect(editset.replacement).toBe("gadget")
+      // Should exclude conflicting widget.ts -> gadget.ts
+      expect(editset.fileOps.length).toBe(3)
+    })
+
+    test("includes checksums", async () => {
+      const editset = await createFileRenameProposal("widget", "gadget", "**/*.ts", FIXTURE_DIR)
+
+      for (const op of editset.fileOps) {
+        expect(op.checksum).toBeDefined()
+        expect(op.checksum.length).toBe(16) // SHA256 truncated to 16 chars
+      }
+    })
+  })
+
+  describe("verifyFileEditset", () => {
+    test("valid when files unchanged", async () => {
+      const editset = await createFileRenameProposal("widget", "gadget", "**/*.ts", FIXTURE_DIR)
+      const result = verifyFileEditset(editset, FIXTURE_DIR)
+
+      expect(result.valid).toBe(true)
+      expect(result.drifted.length).toBe(0)
+    })
   })
 })
 
-describe("checkFileConflicts", () => {
+// Destructive tests need fresh fixtures each time
+describe("verifyFileEditset mutations", () => {
   beforeEach(setupFixtures)
   afterEach(cleanupFixtures)
-
-  test("detects target exists conflict", async () => {
-    const ops = await findFilesToRename("widget", "gadget", "**/*.ts", FIXTURE_DIR)
-    const report = checkFileConflicts(ops, FIXTURE_DIR)
-
-    // widget.ts -> gadget.ts should conflict because gadget.ts exists
-    expect(report.conflicts.length).toBeGreaterThan(0)
-    const widgetConflict = report.conflicts.find((c) => c.oldPath === "widget.ts")
-    expect(widgetConflict).toBeDefined()
-    expect(widgetConflict?.reason).toBe("target_exists")
-  })
-
-  test("identifies safe renames", async () => {
-    const ops = await findFilesToRename("widget", "gadget", "**/*.ts", FIXTURE_DIR)
-    const report = checkFileConflicts(ops, FIXTURE_DIR)
-
-    // widget-loader.ts -> gadget-loader.ts should be safe
-    const loaderOp = report.safe.find((op) => op.oldPath === "widget-loader.ts")
-    expect(loaderOp).toBeDefined()
-  })
-})
-
-describe("createFileRenameProposal", () => {
-  beforeEach(setupFixtures)
-  afterEach(cleanupFixtures)
-
-  test("creates editset with file ops", async () => {
-    const editset = await createFileRenameProposal("widget", "gadget", "**/*.ts", FIXTURE_DIR)
-
-    expect(editset.operation).toBe("file-rename")
-    expect(editset.pattern).toBe("widget")
-    expect(editset.replacement).toBe("gadget")
-    // Should exclude conflicting widget.ts -> gadget.ts
-    expect(editset.fileOps.length).toBe(3)
-  })
-
-  test("includes checksums", async () => {
-    const editset = await createFileRenameProposal("widget", "gadget", "**/*.ts", FIXTURE_DIR)
-
-    for (const op of editset.fileOps) {
-      expect(op.checksum).toBeDefined()
-      expect(op.checksum.length).toBe(16) // SHA256 truncated to 16 chars
-    }
-  })
-})
-
-describe("verifyFileEditset", () => {
-  beforeEach(setupFixtures)
-  afterEach(cleanupFixtures)
-
-  test("valid when files unchanged", async () => {
-    const editset = await createFileRenameProposal("widget", "gadget", "**/*.ts", FIXTURE_DIR)
-    const result = verifyFileEditset(editset, FIXTURE_DIR)
-
-    expect(result.valid).toBe(true)
-    expect(result.drifted.length).toBe(0)
-  })
 
   test("detects file changes", async () => {
     const editset = await createFileRenameProposal("widget", "gadget", "**/*.ts", FIXTURE_DIR)
@@ -179,15 +191,21 @@ describe("applyFileRenames", () => {
   afterEach(cleanupFixtures)
 
   test("dry run does not rename files", async () => {
+    // Spy on console.log since dry run logs what it would do
+    const logSpy = spyOn(console, "log").mockImplementation(() => {})
+
     const editset = await createFileRenameProposal("widget", "gadget", "**/*.ts", FIXTURE_DIR)
     const result = applyFileRenames(editset, true, FIXTURE_DIR)
 
     expect(result.applied).toBe(3)
     expect(result.skipped).toBe(0)
+    expect(logSpy).toHaveBeenCalled()
 
     // Files should still have old names
     expect(fs.existsSync(path.join(FIXTURE_DIR, "widget-loader.ts"))).toBe(true)
     expect(fs.existsSync(path.join(FIXTURE_DIR, "gadget-loader.ts"))).toBe(false)
+
+    logSpy.mockRestore()
   })
 
   test("applies renames", async () => {
