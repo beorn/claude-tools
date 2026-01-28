@@ -160,6 +160,76 @@ describe("ripgrep backend", () => {
     })
   })
 
+  describe("UTF-8 multi-byte character handling", () => {
+    let tempDir: string
+
+    beforeAll(() => {
+      tempDir = mkdtempSync(join(tmpdir(), "ripgrep-utf8-test-"))
+      // Create test file with UTF-8 multi-byte characters
+      writeFileSync(
+        join(tempDir, "utf8.md"),
+        "# Default/Preferred Vault\n\nThe vault → repo migration is important.\n"
+      )
+    })
+
+    afterAll(() => {
+      rmSync(tempDir, { recursive: true, force: true })
+    })
+
+    test("correctly calculates byte offsets with UTF-8 characters", () => {
+      try {
+        execSync("which rg", { stdio: "pipe" })
+      } catch {
+        console.log("Skipping test: ripgrep (rg) not installed")
+        return
+      }
+
+      const cwd = process.cwd()
+      try {
+        process.chdir(tempDir)
+        const editset = createPatternReplaceProposal("vault", "repo", "*.md")
+
+        // Should find 2 occurrences
+        expect(editset.refs.length).toBe(2)
+        expect(editset.edits.length).toBe(2)
+
+        // Verify edits have correct replacements
+        const replacements = editset.edits.map((e) => e.replacement)
+        expect(replacements).toContain("repo") // from "vault → repo"
+        expect(replacements).toContain("Repo") // from "Preferred vault"
+      } finally {
+        process.chdir(cwd)
+      }
+    })
+
+    test("applies edits correctly with UTF-8 characters", () => {
+      try {
+        execSync("which rg", { stdio: "pipe" })
+      } catch {
+        console.log("Skipping test: ripgrep (rg) not installed")
+        return
+      }
+
+      const cwd = process.cwd()
+      try {
+        process.chdir(tempDir)
+        const editset = createPatternReplaceProposal("vault", "repo", "*.md")
+
+        // Read the file content
+        const content = require("fs").readFileSync(join(tempDir, "utf8.md"), "utf-8")
+
+        // Apply edits manually to verify they work
+        for (const edit of editset.edits) {
+          const before = content.slice(edit.offset, edit.offset + edit.length)
+          // Verify the matched text is correct (should be "vault" or "Vault", not garbage)
+          expect(before.toLowerCase()).toBe("vault")
+        }
+      } finally {
+        process.chdir(cwd)
+      }
+    })
+  })
+
   describe("case-insensitive search and case-preserving replace", () => {
     let tempDir: string
 

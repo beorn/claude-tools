@@ -129,6 +129,19 @@ Multi-Language Commands (ast-grep/ripgrep):
 
   backends.list                           List available backends
 
+Wiki-link Commands (Obsidian, Foam, Dendron, etc.):
+  wikilink.find                           Find all links to a file
+    --target <file>                       Target file (e.g., "note.md")
+    --glob <glob>                         File glob filter (default: **/*.md)
+
+  wikilink.rename                         Update links when renaming file
+    --old <path>                          Current file path
+    --new <path>                          New file path
+    --output <file>                       Output file (default: wikilink-editset.json)
+
+  wikilink.broken                         Find broken wiki links
+    --glob <glob>                         File glob filter (default: **/*.md)
+
 Editset Commands:
   editset.select <file>                   Filter editset
     --include <refIds>                    Comma-separated refIds to include
@@ -174,6 +187,16 @@ Examples:
 
   # Markdown: Replace "widget" with "gadget" in all docs
   refactor.ts pattern.replace --pattern "widget" --replace "gadget" --glob "**/*.md" --backend ripgrep
+
+  # Wiki-links: Find all links to a note
+  refactor.ts wikilink.find --target old-note.md
+
+  # Wiki-links: Rename note and update all [[old-note]] links
+  refactor.ts wikilink.rename --old old-note.md --new new-note.md --output wikilink-editset.json
+  refactor.ts file.apply wikilink-editset.json
+
+  # Wiki-links: Find broken links
+  refactor.ts wikilink.broken
 
   # Preview changes
   refactor.ts editset.apply editset.json --dry-run

@@ -190,23 +190,37 @@ function generateEdits(refs: Reference[], pattern: string, replacement: string):
     }
 
     // Calculate byte offset from line/col
+    // Note: ripgrep returns byte offsets (0-indexed) which we store as 1-indexed in ref.range
+    // We need to convert these to character offsets for string.slice()
     const lines = content.split("\n")
-    let offset = 0
+    let byteOffset = 0
+    // Add byte length of all previous lines
     for (let i = 0; i < ref.range[0] - 1; i++) {
-      offset += lines[i]!.length + 1 // +1 for newline
+      byteOffset += Buffer.byteLength(lines[i]!, "utf-8") + 1 // +1 for newline
     }
-    offset += ref.range[1] - 1 // column offset (0-indexed)
+    // Add byte offset within the current line (ref.range[1] is 1-indexed byte offset)
+    byteOffset += ref.range[1] - 1
 
-    const matchLength = ref.range[3] - ref.range[1]
+    // Convert byte offset to character offset for string.slice()
+    // We need to find how many characters are in the first byteOffset bytes
+    const contentAsBuffer = Buffer.from(content, "utf-8")
+    const prefixBytes = contentAsBuffer.slice(0, byteOffset)
+    const charOffset = prefixBytes.toString("utf-8").length
+
+    // Calculate match length: convert byte positions to character positions
+    const matchEndByteOffset = byteOffset + (ref.range[3] - ref.range[1])
+    const matchEndBytes = contentAsBuffer.slice(0, matchEndByteOffset)
+    const matchEndCharOffset = matchEndBytes.toString("utf-8").length
+    const matchLength = matchEndCharOffset - charOffset
 
     // Get the actual matched text to compute proper replacement
-    const matchedText = content.slice(offset, offset + matchLength)
+    const matchedText = content.slice(charOffset, charOffset + matchLength)
     // Use case-preserving replacement
     const actualReplacement = matchedText.replace(regex, (m) => preserveCase(m, replacement))
 
     edits.push({
       file: ref.file,
-      offset,
+      offset: charOffset,
       length: matchLength,
       replacement: actualReplacement,
     })
