@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test"
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs"
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from "fs"
 import { join } from "path"
 import { tmpdir } from "os"
 import { execSync } from "child_process"
@@ -216,7 +216,7 @@ describe("ripgrep backend", () => {
         const editset = createPatternReplaceProposal("vault", "repo", "*.md")
 
         // Read the file content
-        const content = require("fs").readFileSync(join(tempDir, "utf8.md"), "utf-8")
+        const content = readFileSync(join(tempDir, "utf8.md"), "utf-8")
 
         // Apply edits manually to verify they work
         for (const edit of editset.edits) {
