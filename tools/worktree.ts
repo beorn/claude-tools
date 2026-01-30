@@ -15,7 +15,7 @@
  *   list                   - Detailed worktree status
  */
 
-import { existsSync } from "fs"
+import { existsSync, readFileSync } from "fs"
 import { join, dirname, basename } from "path"
 import { $ } from "bun"
 
@@ -55,7 +55,7 @@ export function getSubmodulePaths(repoRoot: string): string[] {
   const gitmodulesPath = join(repoRoot, ".gitmodules")
   if (!existsSync(gitmodulesPath)) return []
 
-  const content = Bun.file(gitmodulesPath).text()
+  const content = readFileSync(gitmodulesPath, "utf8")
   const paths: string[] = []
   const regex = /path\s*=\s*(.+)/g
   let match
@@ -488,22 +488,37 @@ export async function showDefaultInfo(): Promise<void> {
   }
 
   const repoName = basename(gitRoot)
+  const currentDir = process.cwd()
+  const submodules = getSubmodulePaths(gitRoot)
 
   console.log(CYAN + BOLD + "Git Worktrees" + RESET)
   console.log(DIM + `Repository: ${repoName}` + RESET)
+  if (submodules.length > 0) {
+    console.log(DIM + `Submodules: ${submodules.length} (${submodules.slice(0, 3).join(", ")}${submodules.length > 3 ? "..." : ""})` + RESET)
+  }
   console.log("")
 
   const worktrees = await getWorktrees(gitRoot)
 
+  // Table header
+  console.log(DIM + "  NAME                      BRANCH              STATUS" + RESET)
+  console.log(DIM + "  " + "─".repeat(60) + RESET)
+
   for (const wt of worktrees) {
     const name = basename(wt.path)
     const isMain = wt.path === gitRoot
+    const isCurrent = wt.path === currentDir || currentDir.startsWith(wt.path + "/")
 
-    // Check for changes (quick check)
+    // Check for changes
     const status = await getWorktreeStatus(wt.path)
-    const dirty = status.dirty ? YELLOW + " *" + RESET : ""
 
-    // Format branch color
+    // Get last commit info
+    const lastCommit = await safeExec(
+      $`cd ${wt.path} && git log -1 --format="%cr" 2>/dev/null`,
+    )
+    const commitAge = lastCommit.stdout.trim() || "unknown"
+
+    // Format branch
     let branchColor
     if (wt.branch === "main" || wt.branch === "master") {
       branchColor = GREEN + wt.branch + RESET
@@ -513,17 +528,57 @@ export async function showDefaultInfo(): Promise<void> {
       branchColor = BLUE + wt.branch + RESET
     }
 
-    const marker = isMain ? CYAN + " (main)" + RESET : ""
-    console.log(`  ${name.padEnd(25)} ${branchColor}${dirty}${marker}`)
+    // Format status
+    let statusStr = ""
+    if (status.dirty) {
+      statusStr = YELLOW + `${status.changes.length} changes` + RESET
+    } else {
+      statusStr = DIM + "clean" + RESET
+    }
+
+    // Current marker
+    const currentMarker = isCurrent ? CYAN + " ◀" + RESET : ""
+    const mainMarker = isMain ? DIM + " (primary)" + RESET : ""
+
+    console.log(
+      `  ${name.padEnd(26)} ${(branchColor + RESET).padEnd(30)} ${statusStr}${currentMarker}${mainMarker}`,
+    )
+    console.log(DIM + `     ${wt.path}  (${commitAge})` + RESET)
   }
 
   console.log("")
   console.log(DIM + `${worktrees.length} worktree(s)` + RESET)
+
+  // Usage section
   console.log("")
-  console.log("Commands:")
-  console.log(CYAN + "  bun worktree create <name> [branch]" + RESET + DIM + "  Create new worktree" + RESET)
-  console.log(CYAN + "  bun worktree remove <name>" + RESET + DIM + "          Remove worktree" + RESET)
-  console.log(CYAN + "  bun worktree list" + RESET + DIM + "                   Detailed status" + RESET)
+  console.log(BOLD + "What are worktrees?" + RESET)
+  console.log(DIM + "  Worktrees let you work on multiple branches simultaneously without stashing." + RESET)
+  console.log(DIM + "  Each worktree is a separate directory with its own working tree." + RESET)
+
+  console.log("")
+  console.log(BOLD + "Commands" + RESET)
+  console.log(CYAN + "  bun worktree create <name>" + RESET)
+  console.log(DIM + `     Create worktree at ../${repoName}-<name> on branch feat/<name>` + RESET)
+  console.log(DIM + `     Example: bun worktree create bugfix  →  ../${repoName}-bugfix` + RESET)
+  console.log("")
+  console.log(CYAN + "  bun worktree create <name> <branch>" + RESET)
+  console.log(DIM + "     Create worktree on specific branch" + RESET)
+  console.log(DIM + "     Example: bun worktree create test main  →  track main branch" + RESET)
+  console.log("")
+  console.log(CYAN + "  bun worktree remove <name>" + RESET)
+  console.log(DIM + "     Remove worktree (checks for uncommitted changes)" + RESET)
+  console.log(DIM + "     Use --force to skip checks, --delete-branch to also delete branch" + RESET)
+  console.log("")
+  console.log(CYAN + "  bun worktree list" + RESET)
+  console.log(DIM + "     Show detailed status including file changes" + RESET)
+
+  if (submodules.length > 0) {
+    console.log("")
+    console.log(BOLD + "Submodule handling" + RESET)
+    console.log(DIM + "  • Create validates all submodule commits are pushed first" + RESET)
+    console.log(DIM + "  • Each worktree gets independent submodule clones (not symlinks)" + RESET)
+    console.log(DIM + "  • Changes in one worktree's submodules don't affect others" + RESET)
+  }
 }
 
 function printHelp(): void {
