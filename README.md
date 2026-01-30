@@ -2,10 +2,6 @@
 
 Batch operations across files. Claude automatically uses this skill when you ask to rename, refactor, or migrate terminology.
 
-## Note: Flat Structure Required
-
-Claude Code's plugin skill discovery ignores the `source.path` field in marketplace.json when looking for skills. Skills must be at the repo root, not in a subdirectory. This prevents true monorepo plugin structures.
-
 ## Features at a Glance
 
 | Feature | What it does |
