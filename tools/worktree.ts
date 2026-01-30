@@ -1,0 +1,628 @@
+#!/usr/bin/env bun
+/**
+ * worktree.ts - Git worktree management with submodule support
+ *
+ * Creates, removes, and lists git worktrees with proper setup for projects that use:
+ * - Git submodules (independent clones per worktree)
+ * - bun/npm dependencies
+ * - direnv
+ * - Git hooks
+ *
+ * Commands:
+ *   (default)              - Show worktrees and help
+ *   create <name> [branch] - Create worktree at ../<repo>-<name>
+ *   remove <name>          - Remove worktree
+ *   list                   - Detailed worktree status
+ */
+
+import { existsSync } from "fs"
+import { join, dirname, basename } from "path"
+import { $ } from "bun"
+
+// ANSI colors
+const RESET = "\x1b[0m"
+const BOLD = "\x1b[1m"
+const DIM = "\x1b[2m"
+const RED = "\x1b[31m"
+const GREEN = "\x1b[32m"
+const YELLOW = "\x1b[33m"
+const BLUE = "\x1b[34m"
+const CYAN = "\x1b[36m"
+
+const info = (msg: string) => console.log(`${BLUE}→${RESET} ${msg}`)
+const success = (msg: string) => console.log(`${GREEN}✓${RESET} ${msg}`)
+const warn = (msg: string) => console.log(`${YELLOW}⚠${RESET} ${msg}`)
+const error = (msg: string) => console.error(`${RED}✗${RESET} ${msg}`)
+
+// ============================================
+// Core Functions (exported for library use)
+// ============================================
+
+/** Find git root from a starting directory */
+export function findGitRoot(startDir: string): string | undefined {
+  let current = startDir
+  while (current !== dirname(current)) {
+    if (existsSync(join(current, ".git"))) {
+      return current
+    }
+    current = dirname(current)
+  }
+  return undefined
+}
+
+/** Parse submodule paths from .gitmodules */
+export function getSubmodulePaths(repoRoot: string): string[] {
+  const gitmodulesPath = join(repoRoot, ".gitmodules")
+  if (!existsSync(gitmodulesPath)) return []
+
+  const content = Bun.file(gitmodulesPath).text()
+  const paths: string[] = []
+  const regex = /path\s*=\s*(.+)/g
+  let match
+  while ((match = regex.exec(content.toString())) !== null) {
+    const path = match[1]
+    if (path) paths.push(path.trim())
+  }
+  return paths
+}
+
+/** Safe shell execution - doesn't throw on non-zero exit */
+export async function safeExec(
+  cmd: ReturnType<typeof $>,
+): Promise<{ stdout: string; exitCode: number }> {
+  try {
+    const result = await cmd.quiet()
+    return { stdout: result.stdout.toString(), exitCode: result.exitCode }
+  } catch (e) {
+    const err = e as { exitCode?: number; stdout?: Buffer }
+    return { stdout: err.stdout?.toString() ?? "", exitCode: err.exitCode ?? 1 }
+  }
+}
+
+/** Check if a commit exists on any remote branch */
+export async function commitExistsOnRemote(
+  repoPath: string,
+  commit: string,
+): Promise<boolean> {
+  const result = await safeExec(
+    $`cd ${repoPath} && git branch -r --contains ${commit} 2>/dev/null`,
+  )
+  return result.exitCode === 0 && result.stdout.trim().length > 0
+}
+
+/** Get list of worktrees */
+export async function getWorktrees(
+  gitRoot: string,
+): Promise<Array<{ path: string; branch: string; isDetached: boolean }>> {
+  const result = await $`cd ${gitRoot} && git worktree list --porcelain`.quiet()
+  const lines = result.stdout.toString().split("\n")
+
+  const worktrees: Array<{ path: string; branch: string; isDetached: boolean }> = []
+  let currentPath = ""
+  let currentBranch = ""
+  let isDetached = false
+
+  for (const line of lines) {
+    if (line.startsWith("worktree ")) {
+      currentPath = line.slice(9)
+    } else if (line.startsWith("branch ")) {
+      currentBranch = line.slice(7).replace("refs/heads/", "")
+    } else if (line === "detached") {
+      currentBranch = "(detached)"
+      isDetached = true
+    } else if (line === "" && currentPath) {
+      // Skip internal .git/modules paths (submodule worktrees)
+      if (!currentPath.includes("/.git/modules/")) {
+        worktrees.push({
+          path: currentPath,
+          branch: currentBranch,
+          isDetached,
+        })
+      }
+      currentPath = ""
+      currentBranch = ""
+      isDetached = false
+    }
+  }
+
+  return worktrees
+}
+
+/** Check for uncommitted changes in a worktree */
+export async function getWorktreeStatus(
+  worktreePath: string,
+): Promise<{ dirty: boolean; changes: string[] }> {
+  if (!existsSync(worktreePath)) {
+    return { dirty: false, changes: [] }
+  }
+
+  const result = await safeExec(
+    $`cd ${worktreePath} && git status --porcelain 2>/dev/null`,
+  )
+
+  const changes = result.stdout.trim().split("\n").filter(Boolean)
+  return { dirty: changes.length > 0, changes }
+}
+
+// ============================================
+// Commands
+// ============================================
+
+export interface CreateOptions {
+  install?: boolean
+  direnv?: boolean
+  hooks?: boolean
+}
+
+export async function createWorktree(
+  name: string,
+  branch?: string,
+  options: CreateOptions = {},
+): Promise<void> {
+  const { install = true, direnv = true, hooks = true } = options
+
+  const gitRoot = findGitRoot(process.cwd())
+  if (!gitRoot) {
+    error("Not in a git repository")
+    process.exit(1)
+  }
+
+  const repoName = basename(gitRoot)
+  const worktreePath = join(dirname(gitRoot), `${repoName}-${name}`)
+  const branchName = branch ?? `feat/${name}`
+
+  // Check if directory exists
+  if (existsSync(worktreePath)) {
+    error(`Directory already exists: ${worktreePath}`)
+    process.exit(1)
+  }
+
+  // Check for unpushed submodule commits
+  info("Checking submodule state...")
+  const submodules = getSubmodulePaths(gitRoot)
+  const unpushed: string[] = []
+
+  for (const submodule of submodules) {
+    const subPath = join(gitRoot, submodule)
+    if (!existsSync(join(subPath, ".git"))) continue
+
+    const lsTree = await $`cd ${gitRoot} && git ls-tree HEAD ${submodule}`.quiet()
+    const expectedCommit = lsTree.stdout.toString().split(/\s+/)[2]
+
+    if (expectedCommit && !(await commitExistsOnRemote(subPath, expectedCommit))) {
+      unpushed.push(`  - ${submodule} (${expectedCommit.slice(0, 8)})`)
+    }
+  }
+
+  if (unpushed.length > 0) {
+    error("Found unpushed submodule commits:")
+    for (const line of unpushed) {
+      console.log(YELLOW + line + RESET)
+    }
+    console.log("")
+    console.log("Push submodules first:")
+    console.log(CYAN + '  git submodule foreach "git push origin HEAD || true"' + RESET)
+    process.exit(1)
+  }
+  success("Submodules OK")
+
+  // Check if branch exists
+  const branchExists = await safeExec(
+    $`cd ${gitRoot} && git show-ref --verify refs/heads/${branchName} 2>/dev/null`,
+  )
+  const remoteBranchExists = await safeExec(
+    $`cd ${gitRoot} && git show-ref --verify refs/remotes/origin/${branchName} 2>/dev/null`,
+  )
+
+  let branchArg: string[]
+  if (branchExists.exitCode === 0) {
+    info(`Using existing branch: ${branchName}`)
+    branchArg = [branchName]
+  } else if (remoteBranchExists.exitCode === 0) {
+    info(`Tracking remote branch: origin/${branchName}`)
+    branchArg = [branchName]
+  } else {
+    info(`Creating new branch: ${branchName}`)
+    branchArg = ["-b", branchName]
+  }
+
+  // Create worktree
+  info(`Creating worktree at ${worktreePath}...`)
+  const wtResult = await safeExec(
+    $`cd ${gitRoot} && git worktree add ${worktreePath} ${branchArg}`,
+  )
+  if (wtResult.exitCode !== 0) {
+    error("Failed to create worktree")
+    console.log(wtResult.stdout)
+    process.exit(1)
+  }
+  success("Worktree created")
+
+  // Initialize submodules
+  if (submodules.length > 0) {
+    info("Initializing submodules...")
+    const subResult = await safeExec(
+      $`cd ${worktreePath} && git submodule update --init --recursive 2>&1`,
+    )
+    if (subResult.exitCode !== 0) {
+      error("Failed to initialize submodules:")
+      console.log(subResult.stdout)
+      // Clean up
+      await $`git worktree remove ${worktreePath} --force`.quiet()
+      process.exit(1)
+    }
+    success("Submodules initialized")
+  }
+
+  // Run package manager install
+  if (install) {
+    const hasBunLockb = existsSync(join(worktreePath, "bun.lockb")) ||
+                        existsSync(join(worktreePath, "bun.lock"))
+    const hasPackageJson = existsSync(join(worktreePath, "package.json"))
+
+    if (hasPackageJson) {
+      if (hasBunLockb) {
+        info("Running bun install...")
+        const bunResult = await safeExec($`cd ${worktreePath} && bun install`)
+        if (bunResult.exitCode !== 0) {
+          warn("bun install failed (continuing)")
+        } else {
+          success("Dependencies installed")
+        }
+      } else if (existsSync(join(worktreePath, "package-lock.json"))) {
+        info("Running npm install...")
+        const npmResult = await safeExec($`cd ${worktreePath} && npm install`)
+        if (npmResult.exitCode !== 0) {
+          warn("npm install failed (continuing)")
+        } else {
+          success("Dependencies installed")
+        }
+      }
+    }
+  }
+
+  // Allow direnv
+  if (direnv && existsSync(join(worktreePath, ".envrc"))) {
+    info("Allowing direnv...")
+    const direnvResult = await safeExec($`direnv allow ${worktreePath} 2>/dev/null`)
+    if (direnvResult.exitCode === 0) {
+      success("Direnv allowed")
+    } else {
+      console.log(DIM + "  (direnv not available)" + RESET)
+    }
+  }
+
+  // Run prepare script for hooks
+  if (hooks && existsSync(join(worktreePath, "package.json"))) {
+    try {
+      const pkg = (await Bun.file(join(worktreePath, "package.json")).json()) as {
+        scripts?: { prepare?: string }
+      }
+      if (pkg.scripts?.prepare) {
+        info("Installing hooks...")
+        await safeExec($`cd ${worktreePath} && bun run prepare 2>/dev/null`)
+        success("Hooks installed")
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  console.log("")
+  success(`Worktree ready: ${worktreePath}`)
+  console.log("")
+  console.log("Next steps:")
+  console.log(CYAN + `  cd ${worktreePath}` + RESET)
+  console.log("")
+  console.log("To remove later:")
+  console.log(CYAN + `  bun worktree remove ${name}` + RESET)
+}
+
+export interface RemoveOptions {
+  deleteBranch?: boolean
+  force?: boolean
+}
+
+export async function removeWorktree(
+  name: string,
+  options: RemoveOptions = {},
+): Promise<void> {
+  const { deleteBranch = false, force = false } = options
+
+  const gitRoot = findGitRoot(process.cwd())
+  if (!gitRoot) {
+    error("Not in a git repository")
+    process.exit(1)
+  }
+
+  const repoName = basename(gitRoot)
+  const worktreePath = join(dirname(gitRoot), `${repoName}-${name}`)
+
+  if (!existsSync(worktreePath)) {
+    error(`Worktree not found: ${worktreePath}`)
+    console.log("")
+    console.log("Current worktrees:")
+    const result = await $`cd ${gitRoot} && git worktree list`.quiet()
+    console.log(result.stdout.toString())
+    process.exit(1)
+  }
+
+  // Get branch name before removing
+  const branchResult = await $`cd ${worktreePath} && git branch --show-current`.quiet()
+  const branchName = branchResult.stdout.toString().trim()
+
+  // Check for uncommitted changes
+  if (!force) {
+    const status = await getWorktreeStatus(worktreePath)
+    if (status.dirty) {
+      warn("Worktree has uncommitted changes:")
+      for (const change of status.changes.slice(0, 10)) {
+        console.log(DIM + `  ${change}` + RESET)
+      }
+      if (status.changes.length > 10) {
+        console.log(DIM + `  ... and ${status.changes.length - 10} more` + RESET)
+      }
+      console.log(DIM + "Use --force to remove anyway" + RESET)
+      process.exit(1)
+    }
+
+    // Check submodules too
+    const submodules = getSubmodulePaths(worktreePath)
+    for (const submodule of submodules) {
+      const subPath = join(worktreePath, submodule)
+      if (!existsSync(join(subPath, ".git"))) continue
+
+      const subStatus = await getWorktreeStatus(subPath)
+      if (subStatus.dirty) {
+        warn(`Submodule ${submodule} has uncommitted changes`)
+        console.log(DIM + "Use --force to remove anyway" + RESET)
+        process.exit(1)
+      }
+    }
+  }
+
+  // Remove worktree
+  info("Removing worktree...")
+  const removeResult = await safeExec(
+    $`cd ${gitRoot} && git worktree remove ${worktreePath} --force`,
+  )
+  if (removeResult.exitCode !== 0) {
+    error("Failed to remove worktree")
+    process.exit(1)
+  }
+  success("Worktree removed")
+
+  // Prune
+  await $`cd ${gitRoot} && git worktree prune`.quiet()
+
+  // Delete branch if requested
+  if (deleteBranch && branchName) {
+    if (branchName === "main" || branchName === "master") {
+      warn(`Not deleting protected branch: ${branchName}`)
+    } else {
+      info(`Deleting branch: ${branchName}`)
+      await safeExec($`cd ${gitRoot} && git branch -D ${branchName} 2>/dev/null`)
+      success("Branch deleted")
+    }
+  }
+
+  success("Done")
+}
+
+export async function listWorktrees(detailed = false): Promise<void> {
+  const gitRoot = findGitRoot(process.cwd())
+  if (!gitRoot) {
+    error("Not in a git repository")
+    process.exit(1)
+  }
+
+  console.log(CYAN + "Git Worktrees" + RESET)
+  console.log("")
+
+  const worktrees = await getWorktrees(gitRoot)
+
+  for (const wt of worktrees) {
+    const name = basename(wt.path)
+    const isMain = wt.path === gitRoot
+
+    // Check for changes
+    const status = await getWorktreeStatus(wt.path)
+    const dirty = status.dirty ? YELLOW + "*" + RESET : ""
+
+    // Check submodules
+    let submoduleDirty = ""
+    if (detailed) {
+      const submodules = getSubmodulePaths(wt.path)
+      for (const submodule of submodules) {
+        const subPath = join(wt.path, submodule)
+        if (!existsSync(join(subPath, ".git"))) continue
+
+        const subStatus = await getWorktreeStatus(subPath)
+        if (subStatus.dirty) {
+          submoduleDirty = YELLOW + " (submodule changes)" + RESET
+          break
+        }
+      }
+    }
+
+    // Format branch color
+    let branchColor
+    if (wt.branch === "main" || wt.branch === "master") {
+      branchColor = GREEN + wt.branch + RESET
+    } else if (wt.isDetached) {
+      branchColor = RED + wt.branch + RESET
+    } else {
+      branchColor = BLUE + wt.branch + RESET
+    }
+
+    const marker = isMain ? CYAN + " (main)" + RESET : ""
+
+    if (detailed) {
+      console.log(`${name.padEnd(30)} ${branchColor}${dirty}${submoduleDirty}`)
+      console.log(DIM + `  ${wt.path}` + RESET)
+
+      // Show changes if dirty
+      if (status.dirty) {
+        for (const change of status.changes.slice(0, 5)) {
+          console.log(DIM + `    ${change}` + RESET)
+        }
+        if (status.changes.length > 5) {
+          console.log(DIM + `    ... and ${status.changes.length - 5} more` + RESET)
+        }
+      }
+      console.log("")
+    } else {
+      console.log(`  ${name.padEnd(25)} ${branchColor}${dirty}${marker}`)
+    }
+  }
+
+  console.log("")
+  console.log(DIM + `${worktrees.length} worktree(s)` + RESET)
+}
+
+export async function showDefaultInfo(): Promise<void> {
+  const gitRoot = findGitRoot(process.cwd())
+  if (!gitRoot) {
+    error("Not in a git repository")
+    process.exit(1)
+  }
+
+  const repoName = basename(gitRoot)
+
+  console.log(CYAN + BOLD + "Git Worktrees" + RESET)
+  console.log(DIM + `Repository: ${repoName}` + RESET)
+  console.log("")
+
+  const worktrees = await getWorktrees(gitRoot)
+
+  for (const wt of worktrees) {
+    const name = basename(wt.path)
+    const isMain = wt.path === gitRoot
+
+    // Check for changes (quick check)
+    const status = await getWorktreeStatus(wt.path)
+    const dirty = status.dirty ? YELLOW + " *" + RESET : ""
+
+    // Format branch color
+    let branchColor
+    if (wt.branch === "main" || wt.branch === "master") {
+      branchColor = GREEN + wt.branch + RESET
+    } else if (wt.isDetached) {
+      branchColor = RED + wt.branch + RESET
+    } else {
+      branchColor = BLUE + wt.branch + RESET
+    }
+
+    const marker = isMain ? CYAN + " (main)" + RESET : ""
+    console.log(`  ${name.padEnd(25)} ${branchColor}${dirty}${marker}`)
+  }
+
+  console.log("")
+  console.log(DIM + `${worktrees.length} worktree(s)` + RESET)
+  console.log("")
+  console.log("Commands:")
+  console.log(CYAN + "  bun worktree create <name> [branch]" + RESET + DIM + "  Create new worktree" + RESET)
+  console.log(CYAN + "  bun worktree remove <name>" + RESET + DIM + "          Remove worktree" + RESET)
+  console.log(CYAN + "  bun worktree list" + RESET + DIM + "                   Detailed status" + RESET)
+}
+
+function printHelp(): void {
+  console.log(`
+${BOLD}worktree${RESET} - Git worktree management with submodule support
+
+${BOLD}USAGE${RESET}
+  bun worktree                          Show worktrees and help
+  bun worktree create <name> [branch]   Create worktree at ../<repo>-<name>
+  bun worktree remove <name>            Remove worktree
+  bun worktree list                     Detailed worktree status
+
+${BOLD}CREATE OPTIONS${RESET}
+  --no-install      Skip dependency installation
+  --no-direnv       Skip direnv allow
+  --no-hooks        Skip hook installation
+
+${BOLD}REMOVE OPTIONS${RESET}
+  --delete-branch   Also delete the branch
+  -f, --force       Force removal even with uncommitted changes
+
+${BOLD}EXAMPLES${RESET}
+  bun worktree create my-feature                  # New branch feat/my-feature
+  bun worktree create bugfix fix/cursor-pos       # Specific branch
+  bun worktree create test main                   # Track main branch
+  bun worktree remove my-feature --delete-branch  # Remove and delete branch
+
+${BOLD}FEATURES${RESET}
+  - Validates submodule commits are pushed before creating
+  - Clones submodules (not linked) for independent development
+  - Auto-detects bun vs npm for dependency installation
+  - Configures direnv if .envrc present
+  - Installs git hooks via prepare script
+`)
+}
+
+// ============================================
+// Main CLI
+// ============================================
+
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+  const args = argv
+  const command = args[0]
+
+  function hasFlag(name: string): boolean {
+    return args.includes(name)
+  }
+
+  switch (command) {
+    case "create": {
+      const name = args[1]
+      if (!name) {
+        error("Usage: bun worktree create <name> [branch]")
+        process.exit(1)
+      }
+      const branch = args[2]
+      await createWorktree(name, branch, {
+        install: !hasFlag("--no-install"),
+        direnv: !hasFlag("--no-direnv"),
+        hooks: !hasFlag("--no-hooks"),
+      })
+      break
+    }
+
+    case "remove":
+    case "rm": {
+      const name = args[1]
+      if (!name) {
+        error("Usage: bun worktree remove <name>")
+        process.exit(1)
+      }
+      await removeWorktree(name, {
+        deleteBranch: hasFlag("--delete-branch"),
+        force: hasFlag("-f") || hasFlag("--force"),
+      })
+      break
+    }
+
+    case "list":
+    case "ls":
+      await listWorktrees(true)
+      break
+
+    case "help":
+    case "--help":
+    case "-h":
+      printHelp()
+      break
+
+    default:
+      if (command && !command.startsWith("-")) {
+        error(`Unknown command: ${command}`)
+        printHelp()
+        process.exit(1)
+      }
+      await showDefaultInfo()
+  }
+}
+
+if (import.meta.main) {
+  main()
+}

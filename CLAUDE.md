@@ -1,0 +1,43 @@
+# beorn-claude-tools
+
+Generic Claude Code tools - reusable across projects.
+
+**All generic Claude tools should live here**, not in project-specific repos.
+
+## Tools
+
+| Tool | Description | Entry Point |
+|------|-------------|-------------|
+| `refactor` | Batch code refactoring (rename, search-replace, migrate) | `bun tools/refactor.ts` |
+| `llm` | Multi-LLM research, consensus, deep research | `bun tools/llm.ts` |
+| `history` | Claude Code session search with FTS5 | `bun tools/history.ts` |
+| `tty` | TTY testing MCP server (ttyd + Playwright) | MCP server |
+| `worktree` | Git worktree management with submodules | `bun tools/worktree.ts` |
+
+## Skills
+
+See `skills/` for Claude Code skill definitions:
+- `batch-refactor/` - Batch refactoring workflow
+- `llm/` - Multi-LLM queries
+- `tty/` - Terminal app testing
+
+## Usage
+
+Include as git submodule in `vendor/`:
+```bash
+git submodule add <repo-url> vendor/beorn-claude-tools
+```
+
+Run tools:
+```bash
+bun vendor/beorn-claude-tools/tools/llm.ts ask "question"
+bun vendor/beorn-claude-tools/tools/refactor.ts rename.batch --pattern foo --replace bar
+```
+
+## Development
+
+```bash
+cd vendor/beorn-claude-tools
+bun install
+bun run typecheck
+```
