@@ -6,6 +6,7 @@
 
 import { generateText, streamText } from "ai"
 import { getLanguageModel, isProviderAvailable } from "./providers"
+import { isOpenAIDeepResearch, queryOpenAIDeepResearch } from "./openai-deep"
 import type { Model, ModelResponse, ThinkingLevel } from "./types"
 import { getModelsForLevel, getModel, MODELS } from "./types"
 
@@ -39,6 +40,17 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
         error: `Provider ${model.provider} not available (API key not set)`,
       },
     }
+  }
+
+  // Use direct OpenAI SDK for deep research models (requires web_search_preview)
+  if (isOpenAIDeepResearch(model)) {
+    const response = await queryOpenAIDeepResearch({
+      topic: question,
+      model,
+      stream,
+      onToken,
+    })
+    return { response }
   }
 
   const languageModel = getLanguageModel(model)
