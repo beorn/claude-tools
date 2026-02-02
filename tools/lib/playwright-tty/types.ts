@@ -23,6 +23,7 @@ export const TtyStartInputSchema = z.object({
     z.literal("stable"),
     z.string(),
   ]).optional(),
+  timeout: z.number().int().positive().default(5000),
 })
 
 export const TtyResetInputSchema = z.object({

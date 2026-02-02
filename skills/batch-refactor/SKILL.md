@@ -1,16 +1,19 @@
 ---
 name: batch-refactor
-description: Batch operations across files with confidence-based auto-apply. Use for renaming, search-replace, refactoring code, updating text/markdown, and migrating terminology.
+description: Batch operations across files with confidence-based auto-apply. Use for renaming, search-replace, refactoring code, updating text/markdown, migrating terminology, and API migrations. Run `bun tools/refactor.ts --help` for detailed command reference.
 allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 ---
 
 # Batch Operations Skill
 
+**Quick start:** Run `bun vendor/beorn-claude-tools/tools/refactor.ts --help` for command reference and examples.
+
 Use this skill when the user wants to make changes across multiple files:
 - **Code refactoring**: rename functions, variables, types
 - **Text/markdown updates**: change terminology, update docs
 - **File operations**: batch rename files with import path updates
-- **Terminology migrations**: widget→gadget, vault→repo, old API→new API
+- **Terminology migrations**: widget→gadget, vault→repo
+- **API migrations**: old API patterns → new API patterns (LLM-powered)
 
 **Trigger phrases**:
 - "rename X to Y everywhere"
@@ -21,6 +24,10 @@ Use this skill when the user wants to make changes across multiple files:
 - "migrate from X to Y"
 - "rename function/variable everywhere"
 - "change wording in all files"
+- "migrate API" / "update API usage"
+- "change how we call X"
+- "update all uses of X to new pattern"
+- "convert old pattern to new pattern"
 
 ---
 
@@ -67,6 +74,7 @@ bun tools/refactor.ts editset.apply edits.json
 | Rename files | `file.rename` | `--pattern widget --replace repo --glob "**/*.ts"` |
 | Update text in markdown | `pattern.replace --backend ripgrep` | `--pattern widget --replace repo --glob "**/*.md"` |
 | Full terminology migration | `migrate` | `--from widget --to repo` |
+| **API migration (complex patterns)** | `pattern.migrate` | `--patterns "oldApi()" --prompt "migrate to newApi"` |
 
 ---
 
@@ -203,6 +211,7 @@ bun run test:all
 |---------------------|-----------|---------|---------|
 | **File names** | any | file-ops | `file.rename` |
 | TypeScript/JS identifiers | .ts, .tsx, .js, .jsx | ts-morph | `rename.batch` |
+| **API patterns (complex)** | .ts, .tsx | LLM | `pattern.migrate` |
 | Go, Rust, Python structural patterns | .go, .rs, .py | ast-grep | `pattern.replace` |
 | JSON/YAML values | .json, .yaml | ast-grep | `pattern.replace` |
 | Text/markdown/comments | .md, .txt, any | ripgrep | `pattern.replace` |
@@ -252,6 +261,7 @@ bun run test:all
 |---------|---------|
 | `pattern.find --pattern <p> [--glob] [--backend]` | Find structural patterns |
 | `pattern.replace --pattern <p> --replace <r> [--glob] [--backend]` | Pattern replace proposal |
+| `pattern.migrate --patterns <p1,p2> --prompt <text> [--glob]` | LLM-powered API migration |
 | `backends.list` | List available backends |
 
 ### Editset Operations
@@ -841,6 +851,116 @@ bun tools/refactor.ts editset.apply .editsets/03-text-patterns.json
 
 ---
 
+## LLM-Powered API Migration (pattern.migrate)
+
+For complex API migrations where simple find/replace isn't enough, use `pattern.migrate`. This command:
+1. **Searches** for patterns using ripgrep
+2. **Gathers context** around each match
+3. **Sends to LLM** in one call to determine correct replacements
+4. **Generates editset** for review and application
+
+### When to Use pattern.migrate
+
+Use `pattern.migrate` instead of `pattern.replace` when:
+- Transformations require **understanding context** (e.g., adding `await`, changing variable names)
+- Multiple **related patterns** need coordinated changes
+- Replacements involve **value mapping** (e.g., ANSI codes → key names)
+- The old and new patterns have **different structures** (destructuring → single variable)
+
+### Example: Test Framework API Migration
+
+```bash
+# OLD API:
+# const { lastFrame, stdin } = render(<App />)
+# expect(stripAnsi(lastFrame())).toContain('Hello')
+# stdin.write('\x1b[A')
+
+# NEW API:
+# const app = render(<App />)
+# expect(app.text).toContain('Hello')
+# await app.press('ArrowUp')
+
+bun tools/refactor.ts pattern.migrate \
+  --patterns "lastFrame(),stdin.write,= render(" \
+  --glob "**/*.test.tsx" \
+  --prompt "Migrate old render() API to new App API:
+    - const { lastFrame, stdin } = render(...) → const app = render(...)
+    - lastFrame() → app.html
+    - stripAnsi(lastFrame()) → app.text
+    - stdin.write('\\x1b[A') → await app.press('ArrowUp')
+    - stdin.write('\\x1b[B') → await app.press('ArrowDown')" \
+  --output /tmp/migrate.json
+
+# Review
+jq '.refs[:5]' /tmp/migrate.json
+
+# Apply
+bun tools/refactor.ts editset.apply /tmp/migrate.json
+```
+
+### Command Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--patterns <p1,p2,...>` | Comma-separated search patterns (required) | - |
+| `--prompt <text>` | Migration instructions for LLM (required) | - |
+| `--glob <glob>` | File filter | `**/*.{ts,tsx}` |
+| `--output <file>` | Editset output file | `/tmp/migrate.json` |
+| `--model <model>` | Override LLM model | best available |
+| `--dry-run` | Preview prompt without calling LLM | false |
+
+### Workflow
+
+```bash
+# 1. Dry run - see what would be sent to LLM
+bun tools/refactor.ts pattern.migrate \
+  --patterns "oldPattern" \
+  --glob "**/*.ts" \
+  --prompt "Migrate to new pattern" \
+  --dry-run
+
+# 2. Run migration
+bun tools/refactor.ts pattern.migrate \
+  --patterns "oldPattern" \
+  --glob "**/*.ts" \
+  --prompt "Migrate to new pattern" \
+  --output /tmp/migrate.json
+
+# 3. Review editset
+jq '.refs | length' /tmp/migrate.json        # Count changes
+jq '.refs[:3]' /tmp/migrate.json             # Preview first 3
+
+# 4. Apply
+bun tools/refactor.ts editset.apply /tmp/migrate.json
+
+# 5. Verify
+bun tsc --noEmit && bun run test:fast
+```
+
+### Writing Good Migration Prompts
+
+The LLM sees each match with ~3 lines of context. Write prompts that:
+1. **List all transformation rules** clearly with before → after
+2. **Include edge cases** (e.g., what to do with `stripAnsi()` wrappers)
+3. **Specify async handling** if needed (when to add `await`)
+4. **Include value mappings** if applicable (ANSI codes to key names)
+
+```bash
+# Good prompt example:
+--prompt "Migrate test API:
+  - const { lastFrame, stdin } = render(...) → const app = render(...)
+  - lastFrame() → app.html
+  - stripAnsi(lastFrame()) → app.text (remove stripAnsi wrapper)
+  - stdin.write('x') → await app.press('x')
+  - stdin.write('\\x1b[A') → await app.press('ArrowUp')
+  - stdin.write('\\x1b[B') → await app.press('ArrowDown')
+  - stdin.write('\\x1b[C') → await app.press('ArrowRight')
+  - stdin.write('\\x1b[D') → await app.press('ArrowLeft')
+  - stdin.write('\\r') → await app.press('Enter')"
+```
+
+---
+
 ## Enriched Editset JSON Format
 
 When an LLM reviews an editset, it sees enriched context for each reference:
@@ -1206,6 +1326,8 @@ The editset NEVER corrupts files — if the file changed, it skips that file.
 Is this a terminology migration (file names + code + docs)?
 ├── YES → `migrate --from X --to Y`
 └── NO
+    ├── Is this an API migration (complex pattern changes)?
+    │   └── YES → `pattern.migrate --patterns X --prompt "..."` (LLM-powered)
     ├── Renaming files?
     │   └── YES → `file.rename --pattern X --replace Y`
     ├── Renaming TypeScript identifiers?
@@ -1215,6 +1337,12 @@ Is this a terminology migration (file names + code + docs)?
     └── Updating text/markdown/comments?
         └── YES → `pattern.replace --backend ripgrep`
 ```
+
+**Use `pattern.migrate` when:**
+- Old → new patterns have different structures (not just name changes)
+- Transformations need context awareness (adding `await`, changing variable scope)
+- Multiple related patterns need coordinated changes
+- Value mapping is required (e.g., escape codes → named keys)
 
 ---
 

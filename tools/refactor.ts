@@ -51,6 +51,17 @@ import {
   createTsConfigEditset,
 } from "./lib/backends/tsconfig-json"
 import { getBackendByName, getBackends } from "./lib/backend"
+import {
+  findPatterns as migrateFindPatterns,
+  formatForLLM,
+  buildMigrationPrompt,
+  parseReplacements,
+  createEditset as migrateCreateEditset,
+  summarizeMatches,
+} from "./lib/pattern-migrate"
+import { ask } from "./lib/llm/research"
+import { isProviderAvailable } from "./lib/llm/providers"
+import { getBestAvailableModel } from "./lib/llm/types"
 
 // Import core utilities
 import { filterEditset, saveEditset, loadEditset } from "./lib/core/editset"
@@ -115,14 +126,22 @@ async function usage(): Promise<never> {
 
   console.log(`
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                     Refactor - Multi-Language Batch Rename                   ║
+║              Refactor - Batch Rename, Replace, and API Migration             ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 PROJECT STATS
   TypeScript files: ${stats.tsFiles.toLocaleString().padStart(6)}  │  tsconfig.json: ${stats.hasTsConfig ? "✓ found" : "✗ missing"}
   Markdown files:   ${stats.mdFiles.toLocaleString().padStart(6)}  │  ast-grep (sg): ${stats.hasAstGrep ? "✓ installed" : "○ not found"}
 
-TYPICAL WORKFLOW: Rename "widget" → "gadget" everywhere
+WHEN TO USE EACH COMMAND
+
+  migrate           Simple terminology change (widgetPath → repoPath)
+  rename.batch      TypeScript symbol rename (catches destructuring, re-exports)
+  pattern.replace   Text search/replace (comments, markdown, strings)
+  pattern.migrate   Complex API migration (LLM figures out transformations)
+                    Use when old→new patterns have different structures
+
+TERMINOLOGY MIGRATION: Rename "widget" → "gadget" everywhere
 
   Step 1: Check for conflicts (will "gadget" clash with existing names?)
     $ bun refactor rename.batch --pattern widget --replace gadget --check-conflicts
@@ -152,6 +171,25 @@ QUICK COMMANDS
   rename.batch --pattern X --replace Y    TypeScript symbols only (functions, vars, types)
   file.rename --pattern X --replace Y     File names + import paths
   pattern.replace --pattern X --replace Y Text search/replace (comments, strings, markdown)
+  pattern.migrate --patterns X --prompt Y LLM-powered API migration (complex patterns)
+
+API MIGRATION EXAMPLE: Migrate test framework API
+
+  # Old: const { lastFrame, stdin } = render(<App />)
+  #      stdin.write('\\x1b[A')
+  # New: const app = render(<App />)
+  #      await app.press('ArrowUp')
+
+  $ bun refactor pattern.migrate \\
+      --patterns "lastFrame(),stdin.write" \\
+      --glob "**/*.test.tsx" \\
+      --prompt "Migrate render API:
+        - const { lastFrame, stdin } = render(...) → const app = render(...)
+        - lastFrame() → app.html
+        - stdin.write('\\x1b[A') → await app.press('ArrowUp')" \\
+      --output /tmp/migrate.json
+
+  $ bun refactor editset.apply /tmp/migrate.json
 
 EDITSET FORMAT (JSON)
 
@@ -169,6 +207,14 @@ EDITSET FORMAT (JSON)
     $ bun refactor editset.patch edits.json <<< '{"abc123": null, "def456": "Gadget"}'
 
 COMMANDS
+
+  pattern.migrate                         LLM-powered API migration
+    --patterns <p1,p2,...>                Required: patterns to search for
+    --prompt <text>                       Required: migration instructions for LLM
+    --glob <glob>                         File filter (default: **/*.{ts,tsx})
+    --output <file>                       Editset file (default: /tmp/migrate.json)
+    --model <model>                       LLM model override
+    --dry-run                             Preview without calling LLM
 
   migrate                                 Full terminology migration
     --from <pattern> --to <replacement>   Required: pattern and replacement
@@ -960,6 +1006,122 @@ async function main() {
           files: r.files,
         })),
         totalEdits: totalCount,
+      })
+      break
+    }
+
+    // LLM-powered pattern migration
+    case "pattern.migrate": {
+      const patternsArg = getArg("--patterns")
+      const prompt = getArg("--prompt")
+      const glob = getArg("--glob") || "**/*.{ts,tsx}"
+      const outputFile = getArg("--output") || "/tmp/migrate.json"
+      const modelOverride = getArg("--model")
+      const dryRun = hasFlag("--dry-run")
+
+      if (!patternsArg) {
+        error("Usage: pattern.migrate --patterns <p1,p2,...> --prompt <text> [--glob <glob>] [--output <file>]")
+      }
+      if (!prompt) {
+        error("--prompt is required: migration instructions for the LLM")
+      }
+
+      const patterns = patternsArg.split(",").map((p) => p.trim())
+
+      // 1. Find all matches
+      console.error(`Searching for ${patterns.length} patterns in ${glob}...`)
+      const matches = migrateFindPatterns(patterns, glob)
+
+      if (matches.length === 0) {
+        console.error("No matches found.")
+        output({ patterns, glob, matchCount: 0 })
+        break
+      }
+
+      const fileSummary = summarizeMatches(matches)
+      console.error(`Found ${matches.length} matches in ${fileSummary.size} files:`)
+      for (const [file, count] of fileSummary.entries()) {
+        console.error(`  ${file}: ${count} matches`)
+      }
+
+      // 2. Dry run - just show what would be sent
+      if (dryRun) {
+        console.error("\n[DRY RUN - showing LLM prompt preview]")
+        const llmPrompt = buildMigrationPrompt(matches, prompt)
+        console.error(`\nPrompt length: ${llmPrompt.length} chars`)
+        console.error("\n--- First 2000 chars of prompt ---")
+        console.error(llmPrompt.slice(0, 2000))
+        if (llmPrompt.length > 2000) {
+          console.error(`\n... (${llmPrompt.length - 2000} more chars)`)
+        }
+        output({
+          dryRun: true,
+          patterns,
+          glob,
+          matchCount: matches.length,
+          fileCount: fileSummary.size,
+          promptLength: llmPrompt.length,
+        })
+        break
+      }
+
+      // 3. Get LLM model
+      let model
+      if (modelOverride) {
+        const { getModel } = await import("./lib/llm/types")
+        model = getModel(modelOverride)
+        if (!model) error(`Unknown model: ${modelOverride}`)
+      } else {
+        const result = getBestAvailableModel("default", isProviderAvailable)
+        model = result.model
+        if (!model) error("No LLM model available. Set OPENAI_API_KEY or similar.")
+        if (result.warning) console.error(`⚠️  ${result.warning}`)
+      }
+
+      // 4. Send to LLM
+      const llmPrompt = buildMigrationPrompt(matches, prompt)
+      console.error(`\nSending ${matches.length} matches to ${model.displayName}...`)
+
+      const response = await ask(llmPrompt, "standard", {
+        modelOverride: model.modelId,
+        stream: false,
+      })
+
+      if (response.error) {
+        error(`LLM error: ${response.error}`)
+      }
+
+      // 5. Parse response
+      console.error("Parsing LLM response...")
+      let replacements
+      try {
+        replacements = parseReplacements(response.content)
+      } catch (e) {
+        console.error("\n--- Raw LLM response ---")
+        console.error(response.content)
+        error(`Failed to parse LLM response: ${e instanceof Error ? e.message : String(e)}`)
+      }
+
+      const activeReplacements = replacements.filter((r) => r.new !== null)
+      console.error(`LLM proposed ${activeReplacements.length} replacements (${replacements.length - activeReplacements.length} skipped)`)
+
+      // 6. Create editset
+      const editset = migrateCreateEditset(matches, replacements)
+      saveEditset(editset, outputFile)
+
+      console.error(`\nSaved editset to ${outputFile}`)
+      console.error(`Apply with: bun tools/refactor.ts editset.apply ${outputFile}`)
+
+      output({
+        editsetPath: outputFile,
+        patterns,
+        glob,
+        matchCount: matches.length,
+        fileCount: fileSummary.size,
+        replacementCount: activeReplacements.length,
+        skippedCount: replacements.length - activeReplacements.length,
+        model: model.displayName,
+        usage: response.usage,
       })
       break
     }

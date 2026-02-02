@@ -15,7 +15,7 @@ export async function waitForContent(
   page: Page,
   options: WaitOptions = {},
 ): Promise<void> {
-  const { timeout = 30000 } = options
+  const { timeout = 5000 } = options
 
   await page.waitForFunction(
     () => {
@@ -35,7 +35,7 @@ export async function waitForText(
   text: string,
   options: WaitOptions = {},
 ): Promise<void> {
-  const { timeout = 30000 } = options
+  const { timeout = 5000 } = options
 
   await page.waitForFunction(
     (searchText) => {
@@ -56,7 +56,7 @@ export async function waitForStable(
   stableMs: number = 500,
   options: WaitOptions = {},
 ): Promise<void> {
-  const { timeout = 30000 } = options
+  const { timeout = 5000 } = options
   const startTime = Date.now()
 
   let lastContent = ""

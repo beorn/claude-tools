@@ -8,11 +8,20 @@ Generic Claude Code tools - reusable across projects.
 
 | Tool | Description | Entry Point |
 |------|-------------|-------------|
-| `refactor` | Batch code refactoring (rename, search-replace, migrate) | `bun tools/refactor.ts` |
+| `refactor` | Batch rename, replace, API migration (run `--help` for guide) | `bun tools/refactor.ts` |
 | `llm` | Multi-LLM research, consensus, deep research | `bun tools/llm.ts` |
 | `history` | Claude Code session search with FTS5 | `bun tools/history.ts` |
 | `tty` | TTY testing MCP server (ttyd + Playwright) | MCP server |
 | `worktree` | Git worktree management with submodules | `bun tools/worktree.ts` |
+
+### Refactor Tool Capabilities
+
+- **migrate**: Full terminology migration (files + symbols + text)
+- **rename.batch**: TypeScript symbol rename (catches destructuring, re-exports)
+- **pattern.replace**: Text search/replace (comments, markdown, strings)
+- **pattern.migrate**: LLM-powered API migration (complex pattern transformations)
+
+Run `bun tools/refactor.ts --help` for detailed command reference and examples.
 
 ## Skills
 

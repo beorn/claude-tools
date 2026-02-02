@@ -95,6 +95,10 @@ async function main() {
           .union([z.literal("content"), z.literal("stable"), z.string()])
           .optional()
           .describe("Wait condition: 'content', 'stable', or specific text"),
+        timeout: z
+          .number()
+          .default(5000)
+          .describe("Timeout in ms for waitFor condition (default: 5000)"),
       },
     },
     async (args) => {

@@ -12,6 +12,7 @@ export interface TtySessionOptions {
   env?: Record<string, string>
   viewport?: Viewport
   waitFor?: "content" | "stable" | string
+  timeout?: number
   cwd?: string
 }
 
@@ -40,6 +41,7 @@ export async function createSession(
     env,
     viewport = { width: 1000, height: 700 },
     waitFor = "content",
+    timeout = 5000,
     cwd,
   } = options
 
@@ -52,7 +54,7 @@ export async function createSession(
   await page.goto(ttyd.url)
 
   // Wait for initial content
-  await performWait(page, waitFor)
+  await performWait(page, waitFor, timeout)
 
   const createdAt = new Date()
   let currentCommand = command
@@ -73,7 +75,7 @@ export async function createSession(
 
     // Navigate to new URL
     await page.goto(ttyd.url)
-    await performWait(page, waitFor)
+    await performWait(page, waitFor, timeout)
 
     currentCommand = newCommand
     return ttyd.url
@@ -103,13 +105,15 @@ export async function createSession(
 async function performWait(
   page: Page,
   waitFor: "content" | "stable" | string,
+  timeout: number,
 ): Promise<void> {
+  const opts = { timeout }
   if (waitFor === "content") {
-    await waitForContent(page)
+    await waitForContent(page, opts)
   } else if (waitFor === "stable") {
-    await waitForStable(page)
+    await waitForStable(page, 500, opts)
   } else {
     // Wait for specific text
-    await waitForText(page, waitFor)
+    await waitForText(page, waitFor, opts)
   }
 }
