@@ -81,9 +81,9 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
           model,
           content: fullText,
           usage: usage ? {
-            promptTokens: usage.promptTokens,
-            completionTokens: usage.completionTokens,
-            totalTokens: usage.totalTokens,
+            promptTokens: usage.inputTokens ?? 0,
+            completionTokens: usage.outputTokens ?? 0,
+            totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
           } : undefined,
           durationMs: Date.now() - startTime,
         },
@@ -98,11 +98,13 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
         response: {
           model,
           content: result.text,
-          reasoning: result.reasoning?.text,
+          reasoning: Array.isArray(result.reasoning) && result.reasoning.length > 0
+            ? result.reasoning.map(r => r.text).join("\n")
+            : undefined,
           usage: result.usage ? {
-            promptTokens: result.usage.promptTokens,
-            completionTokens: result.usage.completionTokens,
-            totalTokens: result.usage.totalTokens,
+            promptTokens: result.usage.inputTokens ?? 0,
+            completionTokens: result.usage.outputTokens ?? 0,
+            totalTokens: (result.usage.inputTokens ?? 0) + (result.usage.outputTokens ?? 0),
           } : undefined,
           durationMs: Date.now() - startTime,
         },

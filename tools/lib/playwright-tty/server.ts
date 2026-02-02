@@ -89,7 +89,7 @@ export class PlaywrightTtyBackend {
             const browser = await this.ensureBrowser()
             const session = await createSession(id, browser, {
               command: input.command,
-              env: input.env,
+              env: input.env as Record<string, string> | undefined,
               viewport: input.viewport,
               waitFor: input.waitFor,
             })
@@ -111,7 +111,7 @@ export class PlaywrightTtyBackend {
         const session = this.getSession(input.sessionId)
         const url = await session.reset({
           command: input.command,
-          env: input.env,
+          env: input.env as Record<string, string> | undefined,
         })
         return { url }
       }

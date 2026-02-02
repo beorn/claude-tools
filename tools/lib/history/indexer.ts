@@ -402,7 +402,7 @@ export async function rebuildIndex(
 
       // Extract title from first heading or filename
       const titleMatch = content.match(/^#\s+(.+)$/m)
-      const title = titleMatch ? titleMatch[1] : filename
+      const title = titleMatch?.[1] ?? filename
 
       insertContent(
         db,

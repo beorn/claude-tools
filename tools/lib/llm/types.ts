@@ -351,7 +351,7 @@ function getProviderEnvVar(provider: Provider): string {
     case "google": return "GOOGLE_GENERATIVE_AI_API_KEY"
     case "xai": return "XAI_API_KEY"
     case "perplexity": return "PERPLEXITY_API_KEY"
-    default: return `${provider.toUpperCase()}_API_KEY`
+    default: return `${(provider as string).toUpperCase()}_API_KEY`
   }
 }
 

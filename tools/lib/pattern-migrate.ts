@@ -50,7 +50,10 @@ export function findPatterns(patterns: string[], glob: string): Match[] {
 
     for (const line of output.split("\n").filter(Boolean)) {
       try {
-        const data = JSON.parse(line)
+        const data = JSON.parse(line) as {
+          type: string
+          data: { path: { text: string }; line_number: number; lines: { text: string } }
+        }
         if (data.type !== "match") continue
 
         const file = data.data.path.text

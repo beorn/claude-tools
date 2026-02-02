@@ -1,8 +1,21 @@
 /**
  * Terminal-specific waiting helpers for Playwright pages
+ *
+ * Note: Functions passed to page.evaluate() run in browser context where
+ * `document` is available. We declare minimal browser types since this
+ * project doesn't include DOM lib.
  */
 
 import type { Page } from "playwright"
+
+// Minimal browser types for page.evaluate() functions
+// These run in browser context, not Node.js
+declare const document: {
+  body: {
+    innerText: string
+    innerHTML: string
+  } | null
+}
 
 export interface WaitOptions {
   timeout?: number

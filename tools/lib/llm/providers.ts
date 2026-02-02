@@ -14,7 +14,7 @@ import { createAnthropic } from "@ai-sdk/anthropic"
 import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { createXai } from "@ai-sdk/xai"
 import { createPerplexity } from "@ai-sdk/perplexity"
-import type { LanguageModelV1 } from "ai"
+import type { LanguageModel } from "ai"
 import type { Provider, Model } from "./types"
 
 // Provider instances (lazy-initialized)
@@ -72,7 +72,7 @@ function getPerplexity() {
 /**
  * Get the Vercel AI SDK model instance for a given model definition
  */
-export function getLanguageModel(model: Model): LanguageModelV1 {
+export function getLanguageModel(model: Model): LanguageModel {
   switch (model.provider) {
     case "openai":
       return getOpenAI()(model.modelId)
@@ -133,6 +133,6 @@ export function getProviderEnvVar(provider: Provider): string {
     case "perplexity":
       return "PERPLEXITY_API_KEY"
     default:
-      return `${provider.toUpperCase()}_API_KEY`
+      return `${(provider as string).toUpperCase()}_API_KEY`
   }
 }

@@ -16,7 +16,7 @@ export const SessionIdSchema = z.string().min(1)
 
 export const TtyStartInputSchema = z.object({
   command: z.array(z.string()).min(1),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   viewport: ViewportSchema.optional(),
   waitFor: z.union([
     z.literal("content"),
@@ -29,7 +29,7 @@ export const TtyStartInputSchema = z.object({
 export const TtyResetInputSchema = z.object({
   sessionId: SessionIdSchema,
   command: z.array(z.string()).min(1).optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
 })
 
 export const TtyListInputSchema = z.object({})

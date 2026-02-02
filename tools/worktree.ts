@@ -558,6 +558,7 @@ export async function showDefaultInfo(): Promise<void> {
 
   for (let i = 0; i < worktrees.length; i++) {
     const wt = worktrees[i]
+    if (!wt) continue
     const name = basename(wt.path)
     const isMain = wt.path === gitRoot
     const isCurrent = wt.path === currentDir || currentDir.startsWith(wt.path + "/")

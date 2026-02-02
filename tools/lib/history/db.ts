@@ -510,7 +510,7 @@ export function toFts5Query(query: string): string {
   for (const token of tokens) {
     const phraseMatch = token.match(/^__PHRASE_(\d+)__$/)
     if (phraseMatch) {
-      const idx = parseInt(phraseMatch[1], 10)
+      const idx = parseInt(phraseMatch[1]!, 10)
       const phrase = phrases[idx]
       if (phrase !== undefined) {
         // FTS5 phrase syntax: "word1 word2 word3"

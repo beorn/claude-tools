@@ -83,7 +83,7 @@ async function main() {
         "Start a terminal session with ttyd and connect Playwright browser",
       inputSchema: {
         command: z.array(z.string()).describe("Command to run (e.g. ['bun', 'km', 'view', '/path'])"),
-        env: z.record(z.string()).optional().describe("Environment variables"),
+        env: z.record(z.string(), z.string()).optional().describe("Environment variables"),
         viewport: z
           .object({
             width: z.number().default(1000),
@@ -117,7 +117,7 @@ async function main() {
       inputSchema: {
         sessionId: z.string().describe("Session ID"),
         command: z.array(z.string()).optional().describe("New command (optional)"),
-        env: z.record(z.string()).optional().describe("New environment (optional)"),
+        env: z.record(z.string(), z.string()).optional().describe("New environment (optional)"),
       },
     },
     async (args) => {

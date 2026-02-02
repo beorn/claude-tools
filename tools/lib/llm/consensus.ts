@@ -154,7 +154,12 @@ Format your response as JSON:
     // Parse JSON from response
     const jsonMatch = result.text.match(/\{[\s\S]*\}/)
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0])
+      const parsed = JSON.parse(jsonMatch[0]) as {
+        synthesis?: string
+        agreements?: string[]
+        disagreements?: string[]
+        confidence?: number
+      }
       return {
         synthesis: parsed.synthesis || "",
         agreements: parsed.agreements || [],

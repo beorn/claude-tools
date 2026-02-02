@@ -59,6 +59,7 @@ export function createTTY(options: TtydServerOptions): TtydServer {
     url = `http://127.0.0.1:${port}`
 
     const [cmd, ...args] = command
+    if (!cmd) throw new Error("Empty command array")
 
     process = spawn(
       "ttyd",
