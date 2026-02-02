@@ -323,7 +323,8 @@ async function main() {
         console.error(`\nError: ${response.error}`)
       }
       if (response.usage) {
-        console.error(`\n[${response.model.displayName}] ${response.usage.totalTokens} tokens, ${response.durationMs}ms`)
+        const cost = estimateCost(response.model, response.usage.promptTokens, response.usage.completionTokens)
+        console.error(`\n[${response.model.displayName}] ${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms`)
       }
       break
     }
@@ -396,7 +397,14 @@ async function main() {
         result.disagreements.forEach(d => console.log(`• ${d}`))
       }
 
-      console.error(`\n[${result.responses.length} models, ${result.totalDurationMs}ms]`)
+      // Calculate total cost from all responses
+      let totalCost = 0
+      for (const resp of result.responses) {
+        if (resp.usage) {
+          totalCost += estimateCost(resp.model, resp.usage.promptTokens, resp.usage.completionTokens)
+        }
+      }
+      console.error(`\n[${result.responses.length} models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`)
       break
     }
 
@@ -599,7 +607,14 @@ async function main() {
           console.log(`\nConfidence: ${Math.round(result.confidence * 100)}%`)
         }
 
-        console.error(`\n[${result.responses.length} models, ${result.totalDurationMs}ms]`)
+        // Calculate total cost from all responses
+        let totalCost = 0
+        for (const resp of result.responses) {
+          if (resp.usage) {
+            totalCost += estimateCost(resp.model, resp.usage.promptTokens, resp.usage.completionTokens)
+          }
+        }
+        console.error(`\n[${result.responses.length} models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`)
       }
       break
     }
@@ -642,7 +657,14 @@ async function main() {
           console.log(`\nResearch Confidence: ${Math.round(result.confidence * 100)}%`)
         }
 
-        console.error(`\n[${result.responses.length} deep research models, ${result.totalDurationMs}ms]`)
+        // Calculate total cost from all responses
+        let totalCost = 0
+        for (const resp of result.responses) {
+          if (resp.usage) {
+            totalCost += estimateCost(resp.model, resp.usage.promptTokens, resp.usage.completionTokens)
+          }
+        }
+        console.error(`\n[${result.responses.length} deep research models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`)
       }
       break
     }
@@ -724,9 +746,15 @@ async function main() {
       if (jsonOutput) {
         output(responses)
       } else {
+        let totalCost = 0
         for (const response of responses) {
+          const cost = response.usage
+            ? estimateCost(response.model, response.usage.promptTokens, response.usage.completionTokens)
+            : 0
+          totalCost += cost
+
           console.log(`\n${"=".repeat(60)}`)
-          console.log(`${response.model.displayName} (${response.durationMs}ms)`)
+          console.log(`${response.model.displayName} (${formatCost(cost)}, ${response.durationMs}ms)`)
           console.log("=".repeat(60))
 
           if (response.error) {
@@ -735,6 +763,7 @@ async function main() {
             console.log(response.content)
           }
         }
+        console.error(`\n[${responses.length} models, ${formatCost(totalCost)} total]`)
       }
       break
     }
