@@ -4,7 +4,7 @@ Multi-LLM research with tiered thinking levels, deep research, and consensus.
 
 **Run from your project:**
 ```bash
-bun vendor/beorn-claude-tools/tools/llm.ts <command>
+bun vendor/beorn-tools/tools/llm.ts <command>
 ```
 
 ## When to Use

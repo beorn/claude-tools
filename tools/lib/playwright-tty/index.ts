@@ -3,7 +3,7 @@
  *
  * @example
  * ```typescript
- * import { createTTY } from "@beorn/claude-tools/playwright-tty"
+ * import { createTTY } from "@beorn/tools/playwright-tty"
  *
  * test("renders correctly", async ({ page }) => {
  *   await using ttyd = createTTY({ command: ["bun", "km", "view", "/path"] })

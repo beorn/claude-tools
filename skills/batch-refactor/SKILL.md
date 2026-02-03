@@ -6,7 +6,7 @@ allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 
 # Batch Operations Skill
 
-**Quick start:** Run `bun vendor/beorn-claude-tools/tools/refactor.ts --help` for command reference and examples.
+**Quick start:** Run `bun vendor/beorn-tools/tools/refactor.ts --help` for command reference and examples.
 
 Use this skill when the user wants to make changes across multiple files:
 - **Code refactoring**: rename functions, variables, types
@@ -173,7 +173,7 @@ For changes in git submodules:
 cd vendor/<submodule>
 
 # Run the same workflow (conflicts, files, symbols, text)
-bun ../beorn-claude-tools/plugins/batch/tools/refactor.ts rename.batch \
+bun ../beorn-tools/plugins/batch/tools/refactor.ts rename.batch \
   --pattern widget --replace repo --check-conflicts
 
 # After applying

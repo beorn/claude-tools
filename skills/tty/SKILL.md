@@ -8,7 +8,7 @@ Interactive terminal app testing - MCP server with ttyd + Playwright.
   "mcpServers": {
     "tty": {
       "command": "bun",
-      "args": ["vendor/beorn-claude-tools/tools/playwright-tty-mcp.ts"]
+      "args": ["vendor/beorn-tools/tools/playwright-tty-mcp.ts"]
     }
   }
 }
@@ -172,7 +172,7 @@ For repeatable tests, generate a `.playwright-test.ts` file:
 ```typescript
 // example.playwright-test.ts
 import { test, expect } from "@playwright/test"
-import { createTTY } from "@beorn/claude-tools/playwright-tty"
+import { createTTY } from "@beorn/tools/playwright-tty"
 
 test("board view renders correctly", async ({ page }) => {
   await using ttyd = createTTY({
@@ -213,7 +213,7 @@ Run with: `bunx playwright test example.playwright-test.ts`
 ## First-Time Setup
 
 On first `mcp__tty__start`, Chromium is automatically installed to a local cache:
-- Location: `vendor/beorn-claude-tools/tools/.playwright-cache/`
+- Location: `vendor/beorn-tools/tools/.playwright-cache/`
 - One-time installation, reused for all future sessions
 
 ## Trigger Phrases
