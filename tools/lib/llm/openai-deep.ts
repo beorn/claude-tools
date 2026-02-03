@@ -39,6 +39,8 @@ export interface DeepResearchOptions {
   background?: boolean
   /** Don't persist to temp file (default: false) */
   noPersist?: boolean
+  /** Optional context to prepend to the research prompt */
+  context?: string
 }
 
 /**
@@ -47,13 +49,18 @@ export interface DeepResearchOptions {
 export async function queryOpenAIDeepResearch(
   options: DeepResearchOptions
 ): Promise<ModelResponse> {
-  const { topic, model, stream = false, onToken, noPersist = false } = options
+  const { topic, model, stream = false, onToken, noPersist = false, context } = options
   // Default to background mode for streaming to enable recovery
   const background = options.background ?? stream
   const startTime = Date.now()
   const openai = getClient()
 
-  const researchPrompt = `Research the following topic thoroughly. Provide comprehensive information with sources where possible.
+  // Build the research prompt with optional context
+  const contextSection = context
+    ? `## Background Context\n\n${context}\n\n---\n\n`
+    : ""
+
+  const researchPrompt = `${contextSection}Research the following topic thoroughly. Provide comprehensive information with sources where possible.
 
 Topic: ${topic}
 

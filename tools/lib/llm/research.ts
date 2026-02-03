@@ -16,6 +16,8 @@ export interface QueryOptions {
   systemPrompt?: string
   stream?: boolean
   onToken?: (token: string) => void
+  /** Optional context passed to deep research models */
+  context?: string
 }
 
 export interface QueryResult {
@@ -27,7 +29,7 @@ export interface QueryResult {
  * Query a single model
  */
 export async function queryModel(options: QueryOptions): Promise<QueryResult> {
-  const { question, model, systemPrompt, stream = false, onToken } = options
+  const { question, model, systemPrompt, stream = false, onToken, context } = options
   const startTime = Date.now()
 
   // Check provider availability
@@ -49,6 +51,7 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
       model,
       stream,
       onToken,
+      context,
     })
     return { response }
   }
@@ -156,24 +159,22 @@ export async function ask(
   return result.response
 }
 
+export interface ResearchCallOptions {
+  stream?: boolean
+  onToken?: (token: string) => void
+  modelOverride?: string
+  /** Optional context to prepend to the research prompt */
+  context?: string
+}
+
 /**
  * Deep research query using deep research models
  */
 export async function research(
   topic: string,
-  options: { stream?: boolean; onToken?: (token: string) => void; modelOverride?: string } = {}
+  options: ResearchCallOptions = {}
 ): Promise<ModelResponse> {
-  // Enhance the topic with research-oriented prompting
-  const researchPrompt = `Research the following topic thoroughly. Provide comprehensive information with sources where possible.
-
-Topic: ${topic}
-
-Please provide:
-1. An overview/summary
-2. Key details and facts
-3. Different perspectives or approaches (if applicable)
-4. Recent developments or current state
-5. Sources and references (if available)`
+  const { context } = options
 
   // Get a deep research model, or use override
   let model: Model | undefined
@@ -191,6 +192,35 @@ Please provide:
       throw new Error("No deep research or high-tier models available")
     }
   }
+
+  // For OpenAI deep research, pass topic and context separately
+  // For other models, build the prompt ourselves
+  if (isOpenAIDeepResearch(model)) {
+    const result = await queryModel({
+      question: topic,
+      model,
+      context,
+      stream: options.stream,
+      onToken: options.onToken,
+    })
+    return result.response
+  }
+
+  // Build the research prompt with optional context for non-deep-research models
+  const contextSection = context
+    ? `## Background Context\n\n${context}\n\n---\n\n`
+    : ""
+
+  const researchPrompt = `${contextSection}Research the following topic thoroughly. Provide comprehensive information with sources where possible.
+
+Topic: ${topic}
+
+Please provide:
+1. An overview/summary
+2. Key details and facts
+3. Different perspectives or approaches (if applicable)
+4. Recent developments or current state
+5. Sources and references (if available)`
 
   const result = await queryModel({
     question: researchPrompt,
