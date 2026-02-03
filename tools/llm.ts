@@ -14,7 +14,7 @@
  */
 
 import { ask, research, compare } from "./lib/llm/research"
-import { retrieveResponse } from "./lib/llm/openai-deep"
+import { retrieveResponse, pollForCompletion } from "./lib/llm/openai-deep"
 import { listPartials, findPartialByResponseId, cleanupPartials, type PartialFile } from "./lib/llm/persistence"
 import { consensus, deepConsensus } from "./lib/llm/consensus"
 import { getAvailableProviders, getProviderEnvVar, isProviderAvailable } from "./lib/llm/providers"
@@ -203,9 +203,21 @@ async function checkAndRecoverPartials(): Promise<boolean> {
         completePartial(partial.path, { delete: true })
         console.error(`\n--- End Recovered Response ---\n`)
         recoveredAny = true
+      } else if (recovered.status === "failed" || recovered.status === "cancelled" || recovered.status === "expired") {
+        console.error(`    ❌ Response ${recovered.status} — removing stale partial`)
+        const { completePartial } = await import("./lib/llm/persistence")
+        completePartial(partial.path, { delete: true })
       } else if (recovered.status === "in_progress" || recovered.status === "queued") {
-        console.error(`    ⏳ Still ${recovered.status} on OpenAI - will complete soon`)
-        console.error(`    Run 'llm recover ${partial.metadata.responseId}' to check again`)
+        // Check if stale (>30 min for deep research is suspicious)
+        const age = Date.now() - new Date(partial.metadata.startedAt).getTime()
+        if (age > 30 * 60 * 1000) {
+          console.error(`    ⚠️  Still ${recovered.status} after ${Math.round(age / 60000)}m — likely stale, removing`)
+          const { completePartial } = await import("./lib/llm/persistence")
+          completePartial(partial.path, { delete: true })
+        } else {
+          console.error(`    ⏳ Still ${recovered.status} on OpenAI (${Math.round(age / 60000)}m old)`)
+          console.error(`    Run 'llm recover ${partial.metadata.responseId}' to poll until complete`)
+        }
       } else {
         console.error(`    ⚠️  Could not recover (status: ${recovered.status})`)
         if (partial.content.length > 0) {
@@ -1005,8 +1017,16 @@ async function main() {
 
       // Clean up old partials if requested
       if (hasFlag("--clean")) {
-        const deleted = cleanupPartials()
+        // --clean removes files older than 24h (default was 7 days)
+        const deleted = cleanupPartials(24 * 60 * 60 * 1000)
         console.error(`✓ Cleaned up ${deleted} old partial file(s)`)
+        break
+      }
+
+      // --clean-stale removes files older than 30 minutes
+      if (hasFlag("--clean-stale")) {
+        const deleted = cleanupPartials(30 * 60 * 1000)
+        console.error(`✓ Cleaned up ${deleted} stale partial file(s)`)
         break
       }
 
@@ -1026,29 +1046,60 @@ async function main() {
           }
         }
 
-        // Try to retrieve from OpenAI
-        const response = await retrieveResponse(responseId)
+        // Try to retrieve from OpenAI (with polling for in-progress responses)
+        const initial = await retrieveResponse(responseId)
 
-        if (response.error) {
+        if (initial.error) {
           if (!localPartial) {
-            error(`Failed to retrieve: ${response.error}`)
+            error(`Failed to retrieve: ${initial.error}`)
           }
-          console.error(`\n⚠️  Could not retrieve from OpenAI: ${response.error}`)
-        } else {
-          console.error(`\nStatus: ${response.status}`)
-          if (response.status === "completed") {
+          console.error(`\n⚠️  Could not retrieve from OpenAI: ${initial.error}`)
+        } else if (initial.status === "completed") {
+          console.error("\nFull response from OpenAI:\n")
+          console.log(initial.content)
+          if (initial.usage) {
+            console.error(`\n[${initial.usage.totalTokens} tokens]`)
+          }
+          // Clean up partial file
+          if (localPartial) {
+            const { completePartial } = await import("./lib/llm/persistence")
+            completePartial(localPartial.path, { delete: true })
+          }
+        } else if (initial.status === "in_progress" || initial.status === "queued") {
+          console.error(`\nStatus: ${initial.status} — polling every 5s...`)
+          const result = await pollForCompletion(responseId, {
+            intervalMs: 5_000,
+            maxAttempts: 180,
+            onProgress: (status, elapsed) => {
+              process.stderr.write(`\r⏳ ${status} (${Math.round(elapsed / 1000)}s elapsed)`)
+            },
+          })
+          process.stderr.write("\n")
+
+          if (result.status === "completed" && result.content) {
             console.error("Full response from OpenAI:\n")
-            console.log(response.content)
-            if (response.usage) {
-              console.error(`\n[${response.usage.totalTokens} tokens]`)
+            console.log(result.content)
+            if (result.usage) {
+              console.error(`\n[${result.usage.totalTokens} tokens]`)
             }
-          } else if (response.status === "in_progress") {
-            console.error("Response still in progress. Try again in a moment.")
-          } else if (response.status === "queued") {
-            console.error("Response is queued. Try again in a moment.")
+            // Clean up partial file
+            if (localPartial) {
+              const { completePartial } = await import("./lib/llm/persistence")
+              completePartial(localPartial.path, { delete: true })
+            }
           } else {
-            console.error(`Response status: ${response.status}`)
+            console.error(`Response ${result.status}${result.error ? `: ${result.error}` : ""}`)
           }
+        } else if (initial.status === "failed" || initial.status === "cancelled" || initial.status === "expired") {
+          console.error(`\nResponse ${initial.status}`)
+          // Clean up stale partial file for terminal states
+          if (localPartial) {
+            const { completePartial } = await import("./lib/llm/persistence")
+            completePartial(localPartial.path, { delete: true })
+            console.error("Cleaned up stale partial file.")
+          }
+        } else {
+          console.error(`\nResponse status: ${initial.status}`)
         }
         break
       }
@@ -1073,13 +1124,20 @@ async function main() {
             ? `${Math.round(age / 3600000)}h ago`
             : `${Math.round(age / 86400000)}d ago`
 
-        const status = partial.metadata.completedAt ? "✓ completed" : "⚠️  interrupted"
+        const isStale = age > 30 * 60 * 1000 // >30 min
+        const status = partial.metadata.completedAt
+          ? "✓ completed"
+          : isStale
+            ? "💀 stale"
+            : "⚠️  interrupted"
         const preview = partial.content.slice(0, 100).replace(/\n/g, " ")
 
         console.error(`  ${partial.metadata.responseId}`)
         console.error(`    ${status} | ${ageStr} | ${partial.metadata.model}`)
         console.error(`    Topic: ${partial.metadata.topic.slice(0, 60)}...`)
-        console.error(`    Content: ${preview}${partial.content.length > 100 ? "..." : ""}`)
+        if (partial.content.length > 0) {
+          console.error(`    Content: ${preview}${partial.content.length > 100 ? "..." : ""}`)
+        }
         console.error(`    (${partial.content.length} chars saved)`)
         console.error()
       }

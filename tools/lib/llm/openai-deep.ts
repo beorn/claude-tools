@@ -89,6 +89,7 @@ Please provide:
       let promptTokens = 0
       let completionTokens = 0
       let lastSequence = 0
+      let completed = false
 
       for await (const event of response) {
         // Capture response ID from first event
@@ -123,12 +124,43 @@ Please provide:
             appendPartial(partialPath, delta)
           }
         } else if (event.type === "response.completed") {
+          completed = true
           // Extract usage from completed event
           const usage = event.response?.usage
           if (usage) {
             promptTokens = usage.input_tokens || 0
             completionTokens = usage.output_tokens || 0
           }
+        }
+      }
+
+      // If stream ended without completing (connection dropped during deep research),
+      // fall back to polling retrieveResponse() until the background response finishes
+      if (!completed && responseId && background) {
+        process.stderr.write("\n⏳ Stream disconnected, polling for background response...\n")
+        const pollResult = await pollForCompletion(responseId, {
+          intervalMs: 5_000,
+          maxAttempts: 180,  // 15 min max
+          onProgress: (status, elapsed) => {
+            process.stderr.write(`\r⏳ ${status} (${Math.round(elapsed / 1000)}s elapsed)`)
+          },
+        })
+
+        if (pollResult.content) {
+          onToken(pollResult.content)
+          fullText = pollResult.content
+          process.stderr.write("\n")
+
+          if (partialPath) {
+            appendPartial(partialPath, fullText)
+          }
+        }
+        if (pollResult.usage) {
+          promptTokens = pollResult.usage.promptTokens
+          completionTokens = pollResult.usage.completionTokens
+        }
+        if (pollResult.status === "completed") {
+          completed = true
         }
       }
 
@@ -140,8 +172,11 @@ Please provide:
       }
 
       if (partialPath) {
-        // Delete partial file on successful completion
-        completePartial(partialPath, { delete: true, usage })
+        if (completed) {
+          // Delete partial file on successful completion
+          completePartial(partialPath, { delete: true, usage })
+        }
+        // If not completed, leave partial file for later recovery
       }
 
       return {
@@ -208,6 +243,52 @@ Please provide:
       durationMs: Date.now() - startTime,
       error: errorMessage,
     }
+  }
+}
+
+/**
+ * Poll for a background response to complete
+ */
+export async function pollForCompletion(
+  responseId: string,
+  options: {
+    intervalMs?: number
+    maxAttempts?: number
+    onProgress?: (status: string, elapsedMs: number) => void
+  } = {}
+): Promise<{
+  status: string
+  content: string
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
+  error?: string
+}> {
+  const { intervalMs = 5_000, maxAttempts = 180 } = options
+  const startTime = Date.now()
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const result = await retrieveResponse(responseId)
+
+    if (result.error) {
+      return result
+    }
+
+    if (result.status === "completed") {
+      return result
+    }
+
+    if (result.status === "failed" || result.status === "cancelled" || result.status === "expired") {
+      return { ...result, error: `Response ${result.status}` }
+    }
+
+    // Still in progress or queued - wait and retry
+    options.onProgress?.(result.status, Date.now() - startTime)
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+
+  return {
+    status: "timeout",
+    content: "",
+    error: `Timed out after ${maxAttempts} attempts (${Math.round((maxAttempts * (intervalMs)) / 1000)}s)`,
   }
 }
 
