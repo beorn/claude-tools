@@ -11,6 +11,7 @@
  * Commands:
  *   (default)              - Show worktrees and help
  *   create <name> [branch] - Create worktree at ../<repo>-<name>
+ *   merge <name>           - Merge worktree branch into main and clean up
  *   remove <name>          - Remove worktree
  *   list                   - Detailed worktree status
  */
@@ -257,6 +258,28 @@ export async function createWorktree(
   }
   success("Submodules OK")
 
+  // Warn about existing worktrees
+  const existingWorktrees = await getWorktrees(gitRoot)
+  const otherWorktrees = existingWorktrees.filter(wt => wt.path !== gitRoot)
+  if (otherWorktrees.length > 0) {
+    console.log("")
+    warn(`${otherWorktrees.length} existing worktree(s):`)
+    for (const wt of otherWorktrees) {
+      const wtName = basename(wt.path)
+      const behindResult = await safeExec(
+        $`cd ${wt.path} && git rev-list HEAD..main --count 2>/dev/null`,
+      )
+      const behind = parseInt(behindResult.stdout.trim(), 10) || 0
+      const behindStr = behind > 0
+        ? YELLOW + `(${behind} behind main)` + RESET
+        : GREEN + "(up to date)" + RESET
+      console.log(`  ${wtName.padEnd(22)} ${DIM}${wt.branch.padEnd(22)}${RESET} ${behindStr}`)
+    }
+    console.log("")
+    console.log(DIM + `  Consider cleaning up stale worktrees with: bun worktree remove <name>` + RESET)
+    console.log("")
+  }
+
   // Check if branch exists
   const branchExists = await safeExec(
     $`cd ${gitRoot} && git show-ref --verify refs/heads/${branchName} 2>/dev/null`,
@@ -460,6 +483,146 @@ export async function removeWorktree(
   success("Done")
 }
 
+export interface MergeOptions {
+  deleteBranch?: boolean
+  fullTests?: boolean
+}
+
+export async function mergeWorktree(
+  name: string,
+  options: MergeOptions = {},
+): Promise<void> {
+  const { deleteBranch = true, fullTests = false } = options
+
+  const gitRoot = findGitRoot(process.cwd())
+  if (!gitRoot) {
+    error("Not in a git repository")
+    process.exit(1)
+  }
+
+  const repoName = basename(gitRoot)
+  const worktreePath = join(dirname(gitRoot), `${repoName}-${name}`)
+
+  // Validate we're on the main worktree
+  const currentBranchResult = await $`cd ${gitRoot} && git branch --show-current`.quiet()
+  const currentBranch = currentBranchResult.stdout.toString().trim()
+  if (currentBranch !== "main" && currentBranch !== "master") {
+    error(`Must be on main branch to merge (currently on ${currentBranch})`)
+    process.exit(1)
+  }
+
+  // Validate we're not inside the worktree being merged
+  if (process.cwd().startsWith(worktreePath)) {
+    error("Cannot merge from inside the worktree being merged")
+    console.log(CYAN + `  cd ${gitRoot}` + RESET)
+    process.exit(1)
+  }
+
+  // Check worktree exists
+  if (!existsSync(worktreePath)) {
+    error(`Worktree not found: ${worktreePath}`)
+    process.exit(1)
+  }
+
+  // Get the worktree's branch
+  const branchResult = await $`cd ${worktreePath} && git branch --show-current`.quiet()
+  const branchName = branchResult.stdout.toString().trim()
+  if (!branchName) {
+    error("Worktree has no branch (detached HEAD)")
+    process.exit(1)
+  }
+
+  info(`Merging ${BOLD}${branchName}${RESET} into ${BOLD}${currentBranch}${RESET}`)
+
+  // Check worktree has no uncommitted changes
+  const status = await getWorktreeStatus(worktreePath)
+  if (status.dirty) {
+    error("Worktree has uncommitted changes:")
+    for (const change of status.changes.slice(0, 5)) {
+      console.log(DIM + `  ${change}` + RESET)
+    }
+    if (status.changes.length > 5) {
+      console.log(DIM + `  ... and ${status.changes.length - 5} more` + RESET)
+    }
+    console.log("")
+    console.log("Commit or stash changes in the worktree first:")
+    console.log(CYAN + `  cd ${worktreePath} && git add . && git commit -m "WIP"` + RESET)
+    process.exit(1)
+  }
+  success("Worktree is clean")
+
+  // Check submodules are clean
+  const submodules = getSubmodulePaths(worktreePath)
+  for (const submodule of submodules) {
+    const subPath = join(worktreePath, submodule)
+    if (!existsSync(join(subPath, ".git"))) continue
+
+    const subStatus = await getWorktreeStatus(subPath)
+    if (subStatus.dirty) {
+      error(`Submodule ${submodule} has uncommitted changes`)
+      process.exit(1)
+    }
+  }
+
+  // Merge
+  info(`Running: git merge ${branchName} --no-ff`)
+  const mergeResult = await safeExec(
+    $`cd ${gitRoot} && git merge ${branchName} --no-ff`,
+  )
+  if (mergeResult.exitCode !== 0) {
+    error("Merge conflict! Resolve manually:")
+    console.log(mergeResult.stdout)
+    console.log("")
+    console.log("After resolving:")
+    console.log(CYAN + "  git merge --continue" + RESET)
+    console.log("")
+    console.log("Or abort:")
+    console.log(CYAN + "  git merge --abort" + RESET)
+    process.exit(1)
+  }
+  success("Merged successfully")
+
+  // Show merge summary
+  const logResult = await safeExec(
+    $`cd ${gitRoot} && git log --oneline -5`,
+  )
+  console.log("")
+  console.log(DIM + logResult.stdout.trim() + RESET)
+  console.log("")
+
+  // Run tests
+  const testCmd = fullTests ? "test:all" : "test:fast"
+  info(`Running: bun run ${testCmd}`)
+  const testResult = await safeExec($`cd ${gitRoot} && bun run ${testCmd}`)
+  if (testResult.exitCode !== 0) {
+    warn("Tests failed! Review the merge before pushing.")
+    console.log(DIM + "You may want to revert:" + RESET)
+    console.log(CYAN + "  git reset --hard HEAD~1" + RESET)
+    process.exit(1)
+  }
+  success("Tests passed")
+
+  // Remove worktree
+  info("Removing worktree...")
+  await safeExec($`cd ${gitRoot} && git worktree remove ${worktreePath} --force`)
+  await $`cd ${gitRoot} && git worktree prune`.quiet()
+  success("Worktree removed")
+
+  // Delete branch
+  if (deleteBranch) {
+    if (branchName === "main" || branchName === "master") {
+      warn(`Not deleting protected branch: ${branchName}`)
+    } else {
+      info(`Deleting branch: ${branchName}`)
+      await safeExec($`cd ${gitRoot} && git branch -d ${branchName} 2>/dev/null`)
+      success("Branch deleted")
+    }
+  }
+
+  console.log("")
+  success(`Merge complete: ${branchName} → ${currentBranch}`)
+}
+
 export async function listWorktrees(detailed = false): Promise<void> {
   const gitRoot = findGitRoot(process.cwd())
   if (!gitRoot) {
@@ -618,6 +781,10 @@ export async function showDefaultInfo(): Promise<void> {
   console.log(DIM + "     Create worktree on specific branch" + RESET)
   console.log(DIM + "     Example: bun worktree create test main  →  track main branch" + RESET)
   console.log("")
+  console.log(CYAN + "  bun worktree merge <name>" + RESET)
+  console.log(DIM + "     Merge worktree branch into main, run tests, remove worktree" + RESET)
+  console.log(DIM + "     Use --keep-branch to keep branch, --full-tests for test:all" + RESET)
+  console.log("")
   console.log(CYAN + "  bun worktree remove <name>" + RESET)
   console.log(DIM + "     Remove worktree (checks for uncommitted changes)" + RESET)
   console.log(DIM + "     Use --force to skip checks, --delete-branch to also delete branch" + RESET)
@@ -648,6 +815,7 @@ ${BOLD}worktree${RESET} - Git worktree management with submodule support
 ${BOLD}USAGE${RESET}
   bun worktree                          Show worktrees and help
   bun worktree create <name> [branch]   Create worktree at ../<repo>-<name>
+  bun worktree merge <name>             Merge worktree branch into main and clean up
   bun worktree remove <name>            Remove worktree
   bun worktree list                     Detailed worktree status
 
@@ -657,6 +825,10 @@ ${BOLD}CREATE OPTIONS${RESET}
   --no-hooks        Skip hook installation
   --allow-dirty     Create even with uncommitted changes (not recommended)
 
+${BOLD}MERGE OPTIONS${RESET}
+  --keep-branch     Don't delete the branch after merging
+  --full-tests      Run test:all instead of test:fast
+
 ${BOLD}REMOVE OPTIONS${RESET}
   --delete-branch   Also delete the branch
   -f, --force       Force removal even with uncommitted changes
@@ -665,7 +837,9 @@ ${BOLD}EXAMPLES${RESET}
   bun worktree create my-feature                  # New branch feat/my-feature
   bun worktree create bugfix fix/cursor-pos       # Specific branch
   bun worktree create test main                   # Track main branch
-  bun worktree remove my-feature --delete-branch  # Remove and delete branch
+  bun worktree merge my-feature                    # Merge, test, remove, delete branch
+  bun worktree merge my-feature --keep-branch      # Merge but keep branch
+  bun worktree remove my-feature --delete-branch   # Remove and delete branch
 
 ${BOLD}HOW IT WORKS${RESET}
   Worktrees are created from your COMMITTED state, not your working tree.
@@ -732,6 +906,19 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       await removeWorktree(name, {
         deleteBranch: hasFlag("--delete-branch"),
         force: hasFlag("-f") || hasFlag("--force"),
+      })
+      break
+    }
+
+    case "merge": {
+      const name = args[1]
+      if (!name) {
+        error("Usage: bun worktree merge <name>")
+        process.exit(1)
+      }
+      await mergeWorktree(name, {
+        deleteBranch: !hasFlag("--keep-branch"),
+        fullTests: hasFlag("--full-tests"),
       })
       break
     }
