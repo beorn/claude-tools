@@ -3,6 +3,7 @@
 Interactive terminal app testing - MCP server with ttyd + Playwright.
 
 **Configure in your project's `.mcp.json`:**
+
 ```json
 {
   "mcpServers": {
@@ -23,17 +24,17 @@ Interactive terminal app testing - MCP server with ttyd + Playwright.
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `mcp__tty__start` | Start ttyd server + connect Playwright browser |
-| `mcp__tty__reset` | Restart TTY process, keep browser open (faster than stop+start) |
-| `mcp__tty__stop` | Close browser + stop ttyd |
-| `mcp__tty__press` | Press keyboard key(s) |
-| `mcp__tty__type` | Type text into terminal |
-| `mcp__tty__screenshot` | Capture screenshot (returns image or saves to file) |
-| `mcp__tty__text` | Get terminal text content |
-| `mcp__tty__wait` | Wait for text to appear or DOM stability |
-| `mcp__tty__list` | List active sessions |
+| Tool                   | Description                                                     |
+| ---------------------- | --------------------------------------------------------------- |
+| `mcp__tty__start`      | Start ttyd server + connect Playwright browser                  |
+| `mcp__tty__reset`      | Restart TTY process, keep browser open (faster than stop+start) |
+| `mcp__tty__stop`       | Close browser + stop ttyd                                       |
+| `mcp__tty__press`      | Press keyboard key(s)                                           |
+| `mcp__tty__type`       | Type text into terminal                                         |
+| `mcp__tty__screenshot` | Capture screenshot (returns image or saves to file)             |
+| `mcp__tty__text`       | Get terminal text content                                       |
+| `mcp__tty__wait`       | Wait for text to appear or DOM stability                        |
+| `mcp__tty__list`       | List active sessions                                            |
 
 ## Workflow
 
@@ -58,14 +59,14 @@ Interactive terminal app testing - MCP server with ttyd + Playwright.
 
 Use Playwright key formats for `mcp__tty__press`:
 
-| Key | Format |
-|-----|--------|
-| Enter | `Enter` |
-| Escape | `Escape` |
-| Arrow keys | `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight` |
-| Tab | `Tab` |
-| Backspace | `Backspace` |
-| Single char | `j`, `k`, `q`, etc. |
+| Key           | Format                                             |
+| ------------- | -------------------------------------------------- |
+| Enter         | `Enter`                                            |
+| Escape        | `Escape`                                           |
+| Arrow keys    | `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`  |
+| Tab           | `Tab`                                              |
+| Backspace     | `Backspace`                                        |
+| Single char   | `j`, `k`, `q`, etc.                                |
 | With modifier | `Control+c`, `Control+d`, `Shift+Tab`, `Alt+Enter` |
 
 ## Tool Parameters
@@ -202,17 +203,18 @@ Run with: `bunx playwright test example.playwright-test.ts`
 
 ## When to Use MCP vs Test Files
 
-| Scenario | Use MCP | Use Test File |
-|----------|---------|---------------|
-| Ad-hoc debugging | Yes | |
-| Quick screenshot | Yes | |
-| Repeatable regression test | | Yes |
-| Complex multi-step test | | Yes |
-| CI integration | | Yes |
+| Scenario                   | Use MCP | Use Test File |
+| -------------------------- | ------- | ------------- |
+| Ad-hoc debugging           | Yes     |               |
+| Quick screenshot           | Yes     |               |
+| Repeatable regression test |         | Yes           |
+| Complex multi-step test    |         | Yes           |
+| CI integration             |         | Yes           |
 
 ## First-Time Setup
 
 On first `mcp__tty__start`, Chromium is automatically installed to a local cache:
+
 - Location: `vendor/beorn-tools/tools/.playwright-cache/`
 - One-time installation, reused for all future sessions
 

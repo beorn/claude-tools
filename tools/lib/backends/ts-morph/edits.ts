@@ -1,6 +1,19 @@
 import { Project } from "ts-morph"
-import type { Editset, Reference, Edit, SymbolMatch, ConflictReport, Conflict, SafeRename } from "../../core/types"
-import { getReferences, findSymbols, findAllSymbols, computeNewName } from "./symbols"
+import type {
+  Editset,
+  Reference,
+  Edit,
+  SymbolMatch,
+  ConflictReport,
+  Conflict,
+  SafeRename,
+} from "../../core/types"
+import {
+  getReferences,
+  findSymbols,
+  findAllSymbols,
+  computeNewName,
+} from "./symbols"
 
 /**
  * Create an editset for renaming a single symbol
@@ -8,7 +21,7 @@ import { getReferences, findSymbols, findAllSymbols, computeNewName } from "./sy
 export function createRenameProposal(
   project: Project,
   symbolKey: string,
-  newName: string
+  newName: string,
 ): Editset {
   const [filePath, lineStr, colStr, oldName] = symbolKey.split(":")
   const refs = getReferences(project, symbolKey)
@@ -36,7 +49,7 @@ export function createRenameProposal(
 export function createBatchRenameProposal(
   project: Project,
   pattern: RegExp,
-  replacement: string
+  replacement: string,
 ): Editset {
   const symbols = findSymbols(project, pattern)
   const allRefs: Reference[] = []
@@ -83,7 +96,7 @@ export function createBatchRenameProposal(
 export function checkConflicts(
   project: Project,
   pattern: RegExp,
-  replacement: string
+  replacement: string,
 ): ConflictReport {
   // Get symbols that match the rename pattern
   const matchingSymbols = findSymbols(project, pattern)
@@ -137,10 +150,12 @@ export function createBatchRenameProposalFiltered(
   project: Project,
   pattern: RegExp,
   replacement: string,
-  skipNames: string[]
+  skipNames: string[],
 ): Editset {
   const skipSet = new Set(skipNames)
-  const symbols = findSymbols(project, pattern).filter((sym) => !skipSet.has(sym.name))
+  const symbols = findSymbols(project, pattern).filter(
+    (sym) => !skipSet.has(sym.name),
+  )
 
   const allRefs: Reference[] = []
   const seenRefIds = new Set<string>()
@@ -182,7 +197,7 @@ function generateEditsFromRefs(
   project: Project,
   refs: Reference[],
   oldName: string,
-  newName: string
+  newName: string,
 ): Edit[] {
   const edits: Edit[] = []
   const fileContents = new Map<string, string>()
@@ -224,7 +239,7 @@ function generateBatchEdits(
   project: Project,
   symbols: SymbolMatch[],
   pattern: RegExp,
-  replacement: string
+  replacement: string,
 ): Edit[] {
   const allEdits: Edit[] = []
   const seenLocations = new Set<string>()
@@ -268,7 +283,7 @@ function createDefinitionEdit(
   project: Project,
   sym: SymbolMatch,
   newName: string,
-  fileContents: Map<string, string>
+  fileContents: Map<string, string>,
 ): Edit | null {
   // Get file content
   let content = fileContents.get(sym.file)

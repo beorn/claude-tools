@@ -10,7 +10,13 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "vitest"
 import { spawnSync } from "child_process"
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "fs"
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+} from "fs"
 import { join } from "path"
 import { tmpdir } from "os"
 import { execSync } from "child_process"
@@ -47,7 +53,11 @@ interface FileApplyDryRunOutput {
 }
 
 // Helper to run refactor CLI
-function runRefactor(args: string[], workDir: string, pluginRoot: string): { stdout: string; stderr: string; exitCode: number } {
+function runRefactor(
+  args: string[],
+  workDir: string,
+  pluginRoot: string,
+): { stdout: string; stderr: string; exitCode: number } {
   const refactorScript = join(pluginRoot, "tools/refactor.ts")
   const result = spawnSync("bun", [refactorScript, ...args], {
     cwd: workDir,
@@ -141,7 +151,11 @@ No links to project-alpha here.
         return // Skip if rg not installed
       }
 
-      const result = runRefactor(["wikilink.find", "--target", "project-alpha.md"], tempDir, pluginRoot)
+      const result = runRefactor(
+        ["wikilink.find", "--target", "project-alpha.md"],
+        tempDir,
+        pluginRoot,
+      )
 
       expect(result.exitCode).toBe(0)
 
@@ -174,7 +188,9 @@ No links to project-alpha here.
       expect(output.count).toBeGreaterThanOrEqual(3) // Links in index.md only
 
       // All links should be from index.md
-      const allFromIndex = output.links.every((link) => link.file.endsWith("index.md"))
+      const allFromIndex = output.links.every((link) =>
+        link.file.endsWith("index.md"),
+      )
       expect(allFromIndex).toBe(true)
     })
   })
@@ -189,7 +205,15 @@ No links to project-alpha here.
 
       const editsetPath = join(tempDir, "rename-editset.json")
       const result = runRefactor(
-        ["wikilink.rename", "--old", "project-alpha.md", "--new", "project-beta.md", "--output", editsetPath],
+        [
+          "wikilink.rename",
+          "--old",
+          "project-alpha.md",
+          "--new",
+          "project-beta.md",
+          "--output",
+          editsetPath,
+        ],
         tempDir,
         pluginRoot,
       )
@@ -206,7 +230,9 @@ No links to project-alpha here.
       // Verify editset file exists and has correct structure
       expect(existsSync(editsetPath)).toBe(true)
 
-      const editset = JSON.parse(readFileSync(editsetPath, "utf-8")) as WikilinkEditset
+      const editset = JSON.parse(
+        readFileSync(editsetPath, "utf-8"),
+      ) as WikilinkEditset
       expect(editset.operation).toBe("file-rename")
       expect(editset.fileOps.length).toBe(1)
       expect(editset.fileOps[0]!.type).toBe("rename")
@@ -249,7 +275,9 @@ Good link: [[project-alpha]].
 
       // Check that broken links are detected
       const brokenTargets = output.brokenLinks.map((link) => link.preview)
-      expect(brokenTargets.some((p) => p.includes("non-existent-file"))).toBe(true)
+      expect(brokenTargets.some((p) => p.includes("non-existent-file"))).toBe(
+        true,
+      )
       expect(brokenTargets.some((p) => p.includes("missing-note"))).toBe(true)
     })
   })
@@ -263,7 +291,11 @@ Good link: [[project-alpha]].
       }
 
       // 1. Find links
-      const findResult = runRefactor(["wikilink.find", "--target", "project-alpha.md"], tempDir, pluginRoot)
+      const findResult = runRefactor(
+        ["wikilink.find", "--target", "project-alpha.md"],
+        tempDir,
+        pluginRoot,
+      )
       expect(findResult.exitCode).toBe(0)
       const findOutput = JSON.parse(findResult.stdout) as WikilinkFindOutput
       const originalLinkCount = findOutput.count
@@ -272,23 +304,39 @@ Good link: [[project-alpha]].
       // 2. Create rename editset
       const editsetPath = join(tempDir, "full-rename-editset.json")
       const renameResult = runRefactor(
-        ["wikilink.rename", "--old", "project-alpha.md", "--new", "project-gamma.md", "--output", editsetPath],
+        [
+          "wikilink.rename",
+          "--old",
+          "project-alpha.md",
+          "--new",
+          "project-gamma.md",
+          "--output",
+          editsetPath,
+        ],
         tempDir,
         pluginRoot,
       )
       expect(renameResult.exitCode).toBe(0)
 
       // 3. Verify the editset structure
-      const editset = JSON.parse(readFileSync(editsetPath, "utf-8")) as WikilinkEditset
+      const editset = JSON.parse(
+        readFileSync(editsetPath, "utf-8"),
+      ) as WikilinkEditset
       expect(editset.operation).toBe("file-rename")
       expect(editset.fileOps.length).toBe(1)
       expect(editset.fileOps[0]!.type).toBe("rename")
       expect(editset.importEdits.length).toBe(originalLinkCount)
 
       // 4. Apply the editset (dry-run to verify it would work)
-      const dryRunResult = runRefactor(["file.apply", editsetPath, "--dry-run"], tempDir, pluginRoot)
+      const dryRunResult = runRefactor(
+        ["file.apply", editsetPath, "--dry-run"],
+        tempDir,
+        pluginRoot,
+      )
       expect(dryRunResult.exitCode).toBe(0)
-      const dryRunOutput = JSON.parse(dryRunResult.stdout) as FileApplyDryRunOutput
+      const dryRunOutput = JSON.parse(
+        dryRunResult.stdout,
+      ) as FileApplyDryRunOutput
       expect(dryRunOutput.dryRun).toBe(true)
       expect(dryRunOutput.applied).toBe(0) // Nothing applied in dry-run
 
@@ -316,7 +364,11 @@ Link to [[project-alpha]] {braces}.
 `,
       )
 
-      const result = runRefactor(["wikilink.find", "--target", "project-alpha.md"], tempDir, pluginRoot)
+      const result = runRefactor(
+        ["wikilink.find", "--target", "project-alpha.md"],
+        tempDir,
+        pluginRoot,
+      )
       expect(result.exitCode).toBe(0)
 
       const output = JSON.parse(result.stdout) as WikilinkFindOutput
@@ -334,7 +386,11 @@ Link to [[project-alpha]] {braces}.
       const emptyDir = mkdtempSync(join(tmpdir(), "wikilink-empty-"))
 
       try {
-        const result = runRefactor(["wikilink.find", "--target", "nonexistent.md"], emptyDir, pluginRoot)
+        const result = runRefactor(
+          ["wikilink.find", "--target", "nonexistent.md"],
+          emptyDir,
+          pluginRoot,
+        )
         expect(result.exitCode).toBe(0)
 
         const output = JSON.parse(result.stdout) as WikilinkFindOutput

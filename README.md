@@ -4,20 +4,20 @@ Batch operations across files. Claude automatically uses this skill when you ask
 
 ## Features at a Glance
 
-| Feature | What it does |
-|---------|--------------|
+| Feature                       | What it does                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | **TypeScript/JS Refactoring** | Rename functions, variables, types, interfaces — catches destructuring, re-exports, type references |
-| **File Renames** | Rename files with automatic import path updates |
-| **Wiki-link Updates** | Obsidian/Foam/Dendron: update `[[wikilinks]]` when renaming notes |
-| **package.json Updates** | Update exports, main, types, bin paths when renaming files |
-| **tsconfig.json Updates** | Update paths, references, includes when renaming files |
-| **Multi-language Patterns** | Go, Rust, Python, Ruby via ast-grep structural patterns |
-| **Text/Markdown Replace** | Fast search/replace across any files via ripgrep |
-| **Migrate Command** | Full terminology migration: files → symbols → text in one command |
-| **LLM Patch Workflow** | Review editsets with context, selectively modify replacements |
-| **Case Preservation** | widget→gadget, Widget→Gadget, WIDGET→GADGET automatically |
-| **Conflict Detection** | Check for naming conflicts before applying changes |
-| **Checksum Verification** | Never corrupt files — drifted files are skipped |
+| **File Renames**              | Rename files with automatic import path updates                                                     |
+| **Wiki-link Updates**         | Obsidian/Foam/Dendron: update `[[wikilinks]]` when renaming notes                                   |
+| **package.json Updates**      | Update exports, main, types, bin paths when renaming files                                          |
+| **tsconfig.json Updates**     | Update paths, references, includes when renaming files                                              |
+| **Multi-language Patterns**   | Go, Rust, Python, Ruby via ast-grep structural patterns                                             |
+| **Text/Markdown Replace**     | Fast search/replace across any files via ripgrep                                                    |
+| **Migrate Command**           | Full terminology migration: files → symbols → text in one command                                   |
+| **LLM Patch Workflow**        | Review editsets with context, selectively modify replacements                                       |
+| **Case Preservation**         | widget→gadget, Widget→Gadget, WIDGET→GADGET automatically                                           |
+| **Conflict Detection**        | Check for naming conflicts before applying changes                                                  |
+| **Checksum Verification**     | Never corrupt files — drifted files are skipped                                                     |
 
 ## What it does
 
@@ -74,49 +74,50 @@ bun tools/refactor.ts <command> [options]
 ### File Operations
 
 Automatically updates references based on file type:
+
 - **TypeScript/JS files** → updates import paths
 - **Markdown files** → updates `[[wikilinks]]` (Obsidian, Foam, etc.)
 - **package.json** → updates exports, main, types, bin paths
 - **tsconfig.json** → updates paths mappings, includes, references
 
-| Command | Purpose | Output |
-|---------|---------|--------|
-| `file.find --pattern <p> --replace <r> [--glob]` | Find files to rename | `{files[], count}` |
-| `file.rename --pattern <p> --replace <r> [--glob] [-o] [--check-conflicts]` | Create file rename editset | `FileEditset` |
-| `file.verify <file>` | Check files haven't drifted | `{valid, drifted[]}` |
-| `file.apply <file> [--dry-run]` | Apply file renames | `{applied, skipped, errors[]}` |
+| Command                                                                     | Purpose                     | Output                         |
+| --------------------------------------------------------------------------- | --------------------------- | ------------------------------ |
+| `file.find --pattern <p> --replace <r> [--glob]`                            | Find files to rename        | `{files[], count}`             |
+| `file.rename --pattern <p> --replace <r> [--glob] [-o] [--check-conflicts]` | Create file rename editset  | `FileEditset`                  |
+| `file.verify <file>`                                                        | Check files haven't drifted | `{valid, drifted[]}`           |
+| `file.apply <file> [--dry-run]`                                             | Apply file renames          | `{applied, skipped, errors[]}` |
 
 ### TypeScript/JavaScript Commands (ts-morph)
 
-| Command | Purpose | Output |
-|---------|---------|--------|
-| `symbol.at <file> <line> [col]` | Find symbol at location | `SymbolInfo` |
-| `refs.list <symbolKey>` | List all references | `Reference[]` |
-| `symbols.find --pattern <regex>` | Find matching symbols | `SymbolMatch[]` |
-| `rename.propose <key> <new> [-o]` | Single symbol editset | `ProposeOutput` |
-| `rename.batch --pattern --replace [-o] [--check-conflicts]` | Batch rename editset | `ProposeOutput` |
+| Command                                                     | Purpose                 | Output          |
+| ----------------------------------------------------------- | ----------------------- | --------------- |
+| `symbol.at <file> <line> [col]`                             | Find symbol at location | `SymbolInfo`    |
+| `refs.list <symbolKey>`                                     | List all references     | `Reference[]`   |
+| `symbols.find --pattern <regex>`                            | Find matching symbols   | `SymbolMatch[]` |
+| `rename.propose <key> <new> [-o]`                           | Single symbol editset   | `ProposeOutput` |
+| `rename.batch --pattern --replace [-o] [--check-conflicts]` | Batch rename editset    | `ProposeOutput` |
 
 ### Multi-Language Commands (ast-grep/ripgrep)
 
-| Command | Purpose | Output |
-|---------|---------|--------|
-| `pattern.find --pattern <p> [--glob] [--backend]` | Find structural patterns | `Reference[]` |
+| Command                                                                 | Purpose                        | Output          |
+| ----------------------------------------------------------------------- | ------------------------------ | --------------- |
+| `pattern.find --pattern <p> [--glob] [--backend]`                       | Find structural patterns       | `Reference[]`   |
 | `pattern.replace --pattern <p> --replace <r> [--glob] [--backend] [-o]` | Create pattern replace editset | `ProposeOutput` |
-| `backends.list` | List available backends | `Backend[]` |
+| `backends.list`                                                         | List available backends        | `Backend[]`     |
 
 ### Editset Commands
 
-| Command | Purpose | Output |
-|---------|---------|--------|
-| `editset.select <file> [--include/--exclude] [-o]` | Filter editset | Updated editset |
-| `editset.patch <file> [-o]` | Apply LLM patch from stdin | Updated editset |
-| `editset.verify <file>` | Check for drift | `{valid, issues[]}` |
-| `editset.apply <file> [--dry-run]` | Apply with checksums | `ApplyOutput` |
+| Command                                            | Purpose                    | Output              |
+| -------------------------------------------------- | -------------------------- | ------------------- |
+| `editset.select <file> [--include/--exclude] [-o]` | Filter editset             | Updated editset     |
+| `editset.patch <file> [-o]`                        | Apply LLM patch from stdin | Updated editset     |
+| `editset.verify <file>`                            | Check for drift            | `{valid, issues[]}` |
+| `editset.apply <file> [--dry-run]`                 | Apply with checksums       | `ApplyOutput`       |
 
 ### Migration Commands
 
-| Command | Purpose | Output |
-|---------|---------|--------|
+| Command                                                     | Purpose                    | Output         |
+| ----------------------------------------------------------- | -------------------------- | -------------- |
 | `migrate --from <p> --to <r> [--glob] [--dry-run] [-o dir]` | Full terminology migration | Phases summary |
 
 ### Example: TypeScript Batch Rename

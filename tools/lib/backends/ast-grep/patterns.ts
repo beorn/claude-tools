@@ -31,7 +31,7 @@ export function findPatterns(pattern: string, glob?: string): Reference[] {
 export function createPatternReplaceProposal(
   pattern: string,
   replacement: string,
-  glob?: string
+  glob?: string,
 ): Editset {
   const refs = findPatterns(pattern, glob)
 
@@ -86,7 +86,7 @@ function runSg(args: string[]): SgMatch[] | null {
       (error.message.includes("ENOENT") || error.message.includes("not found"))
     ) {
       throw new Error(
-        "ast-grep CLI (sg) not found. Install via: brew install ast-grep or cargo install ast-grep"
+        "ast-grep CLI (sg) not found. Install via: brew install ast-grep or cargo install ast-grep",
       )
     }
     throw error
@@ -108,7 +108,13 @@ function parseMatches(matches: SgMatch[]): Reference[] {
 
     const checksum = computeChecksum(content)
     const { start, end } = match.range
-    const refId = computeRefId(match.file, start.line, start.column, end.line, end.column)
+    const refId = computeRefId(
+      match.file,
+      start.line,
+      start.column,
+      end.line,
+      end.column,
+    )
 
     // Get preview (the line containing the match)
     const lines = content.split("\n")

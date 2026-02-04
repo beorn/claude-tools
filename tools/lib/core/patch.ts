@@ -43,7 +43,7 @@ export function applyPatch(editset: Editset, patch: Patch): Editset {
       // Edits use byte offset, refs use line/col - we need to match them
       // For now, just update based on default vs custom replacement
       const matchingRef = patchedRefs.find(
-        (r) => r.file === edit.file && r.selected && r.replace !== null
+        (r) => r.file === edit.file && r.selected && r.replace !== null,
       )
       if (matchingRef && matchingRef.replace !== defaultReplacement) {
         return { ...edit, replacement: matchingRef.replace! }
@@ -52,7 +52,9 @@ export function applyPatch(editset: Editset, patch: Patch): Editset {
     })
     .filter((edit) => {
       // Only keep edits for files that have selected refs
-      return patchedRefs.some((r) => r.file === edit.file && r.selected && r.replace !== null)
+      return patchedRefs.some(
+        (r) => r.file === edit.file && r.selected && r.replace !== null,
+      )
     })
 
   return {
@@ -67,7 +69,9 @@ export function applyPatch(editset: Editset, patch: Patch): Editset {
  * Accepts either a full editset or a minimal patch object.
  */
 export function parsePatch(input: string): Patch {
-  const parsed = JSON.parse(input) as { refs?: Array<{ refId?: string; replace?: string }> }
+  const parsed = JSON.parse(input) as {
+    refs?: Array<{ refId?: string; replace?: string }>
+  }
 
   // If it has refs/edits, it's a full editset - extract replace values
   if (parsed.refs && Array.isArray(parsed.refs)) {

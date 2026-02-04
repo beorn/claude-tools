@@ -61,15 +61,11 @@ export function createTTY(options: TtydServerOptions): TtydServer {
     const [cmd, ...args] = command
     if (!cmd) throw new Error("Empty command array")
 
-    process = spawn(
-      "ttyd",
-      ["-W", "-p", String(port), cmd, ...args],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...globalThis.process.env, FORCE_COLOR: "1", ...env },
-        cwd,
-      },
-    )
+    process = spawn("ttyd", ["-W", "-p", String(port), cmd, ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...globalThis.process.env, FORCE_COLOR: "1", ...env },
+      cwd,
+    })
 
     // Wait for ttyd to be ready
     await new Promise<void>((resolve, reject) => {

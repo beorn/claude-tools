@@ -128,13 +128,20 @@ export function extractTextContent(record: JsonlRecord): string | null {
   return parts.length > 0 ? parts.join("\n") : null
 }
 
-export function extractToolInfo(record: JsonlRecord): { toolName: string | null; filePaths: string | null } {
+export function extractToolInfo(record: JsonlRecord): {
+  toolName: string | null
+  filePaths: string | null
+} {
   let toolName: string | null = null
   const filePaths: string[] = []
 
   if (record.type === "assistant" && record.message?.content) {
     for (const item of record.message.content) {
-      if (item && typeof item === "object" && (item as ToolUse).type === "tool_use") {
+      if (
+        item &&
+        typeof item === "object" &&
+        (item as ToolUse).type === "tool_use"
+      ) {
         const toolUse = item as ToolUse
         toolName = toolUse.name
         if (toolUse.input?.file_path) {
@@ -194,7 +201,9 @@ export async function indexSessionFile(
 
       if (record.sessionId) sessionId = record.sessionId
 
-      const timestamp = record.timestamp ? new Date(record.timestamp).getTime() : Date.now()
+      const timestamp = record.timestamp
+        ? new Date(record.timestamp).getTime()
+        : Date.now()
       if (firstTimestamp === null) firstTimestamp = timestamp
       lastTimestamp = timestamp
 
@@ -223,7 +232,11 @@ export async function indexSessionFile(
       }
 
       // Also index writes for backwards compatibility
-      if (!options.messagesOnly && record.type === "assistant" && record.message?.content) {
+      if (
+        !options.messagesOnly &&
+        record.type === "assistant" &&
+        record.message?.content
+      ) {
         for (const item of record.message.content) {
           if (
             item &&
@@ -291,22 +304,29 @@ export interface IndexResult {
 /**
  * Prune sessions and related data older than the cutoff time
  */
-export function pruneOldSessions(db: Database, cutoffTime: number): { sessions: number; messages: number; writes: number } {
+export function pruneOldSessions(
+  db: Database,
+  cutoffTime: number,
+): { sessions: number; messages: number; writes: number } {
   // Get sessions to prune
-  const oldSessions = db.prepare(`
+  const oldSessions = db
+    .prepare(`
     SELECT id FROM sessions WHERE updated_at < ?
-  `).all(cutoffTime) as { id: string }[]
+  `)
+    .all(cutoffTime) as { id: string }[]
 
   if (oldSessions.length === 0) {
     return { sessions: 0, messages: 0, writes: 0 }
   }
 
-  const sessionIds = oldSessions.map(s => s.id)
+  const sessionIds = oldSessions.map((s) => s.id)
 
   // Delete messages for old sessions
   let messagesDeleted = 0
   for (const id of sessionIds) {
-    const result = db.prepare("DELETE FROM messages WHERE session_id = ?").run(id)
+    const result = db
+      .prepare("DELETE FROM messages WHERE session_id = ?")
+      .run(id)
     messagesDeleted += result.changes
   }
 
@@ -325,7 +345,11 @@ export function pruneOldSessions(db: Database, cutoffTime: number): { sessions: 
   // Rebuild FTS index to remove deleted data
   db.prepare("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')").run()
 
-  return { sessions: sessionIds.length, messages: messagesDeleted, writes: writesDeleted }
+  return {
+    sessions: sessionIds.length,
+    messages: messagesDeleted,
+    writes: writesDeleted,
+  }
 }
 
 export async function rebuildIndex(
@@ -337,7 +361,12 @@ export async function rebuildIndex(
 
   // Clear existing data unless incremental
   if (!options.incremental) {
-    clearTables(db, options.messagesOnly ? ["sessions", "messages"] : ["writes", "sessions", "messages"])
+    clearTables(
+      db,
+      options.messagesOnly
+        ? ["sessions", "messages"]
+        : ["writes", "sessions", "messages"],
+    )
     clearContent(db)
   } else {
     // In incremental mode, prune sessions older than 30 days
@@ -371,7 +400,11 @@ export async function rebuildIndex(
       currentFile: relativePath,
     })
 
-    const { messages, writes } = await indexSessionFile(db, sessionFile, options)
+    const { messages, writes } = await indexSessionFile(
+      db,
+      sessionFile,
+      options,
+    )
     totalMessages += messages
     totalWrites += writes
   }
@@ -429,7 +462,10 @@ export async function rebuildIndex(
 
       // Combine all todos into searchable content
       const todoContent = todos
-        .map(t => `[${t.status}] ${t.content}${t.activeForm ? ` (${t.activeForm})` : ""}`)
+        .map(
+          (t) =>
+            `[${t.status}] ${t.content}${t.activeForm ? ` (${t.activeForm})` : ""}`,
+        )
         .join("\n")
 
       if (todoContent.trim()) {
@@ -459,5 +495,13 @@ export async function rebuildIndex(
   setIndexMeta(db, "total_todos", String(totalTodos))
   setIndexMeta(db, "total_summaries", String(totalSummaries))
 
-  return { files: totalFiles, messages: totalMessages, writes: totalWrites, plans: totalPlans, todos: totalTodos, summaries: totalSummaries, skippedOld }
+  return {
+    files: totalFiles,
+    messages: totalMessages,
+    writes: totalWrites,
+    plans: totalPlans,
+    todos: totalTodos,
+    summaries: totalSummaries,
+    skippedOld,
+  }
 }

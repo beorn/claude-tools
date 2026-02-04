@@ -9,6 +9,7 @@ allowed-tools: Bash, Read, Edit, Grep, Glob, AskUserQuestion
 **Quick start:** Run `bun vendor/beorn-tools/tools/refactor.ts --help` for command reference and examples.
 
 Use this skill when the user wants to make changes across multiple files:
+
 - **Code refactoring**: rename functions, variables, types
 - **Text/markdown updates**: change terminology, update docs
 - **File operations**: batch rename files with import path updates
@@ -16,6 +17,7 @@ Use this skill when the user wants to make changes across multiple files:
 - **API migrations**: old API patterns → new API patterns (LLM-powered)
 
 **Trigger phrases**:
+
 - "rename X to Y everywhere"
 - "change all X to Y"
 - "refactor X across the codebase"
@@ -38,18 +40,19 @@ These tools lack checksums, miss edge cases, and can corrupt files. See "Tips & 
 
 **ALWAYS use this tool instead of manual editing when:**
 
-| Situation | Manual Edits | Batch Refactor |
-|-----------|--------------|----------------|
-| Rename a function used in 47 files | 47 separate Edit calls | 1 command |
-| Rename parameter in destructuring patterns | Miss edge cases | Catches all patterns |
-| Update terminology across codebase | Hours of work | Minutes |
-| Rename file + update all imports | Break builds | Atomic, safe |
+| Situation                                  | Manual Edits           | Batch Refactor       |
+| ------------------------------------------ | ---------------------- | -------------------- |
+| Rename a function used in 47 files         | 47 separate Edit calls | 1 command            |
+| Rename parameter in destructuring patterns | Miss edge cases        | Catches all patterns |
+| Update terminology across codebase         | Hours of work          | Minutes              |
+| Rename file + update all imports           | Break builds           | Atomic, safe         |
 
 ### Example: Why Manual Editing Fails
 
 **Task**: Rename `createWidget` to `createGadget`
 
 **Manual approach (WRONG)**:
+
 ```bash
 # You'd miss these patterns:
 const { createWidget } = api          # destructuring
@@ -59,6 +62,7 @@ async ({ createWidget }: Deps) => {}  # parameter destructuring
 ```
 
 **Batch refactor approach (CORRECT)**:
+
 ```bash
 bun tools/refactor.ts rename.batch --pattern createWidget --replace createGadget --output edits.json
 bun tools/refactor.ts editset.apply edits.json
@@ -67,14 +71,14 @@ bun tools/refactor.ts editset.apply edits.json
 
 ### Quick Reference: When to Use Each Command
 
-| You want to... | Command | Example |
-|----------------|---------|---------|
-| Rename TypeScript function/variable | `rename.batch` | `--pattern createWidget --replace createGadget` |
-| Rename TypeScript type/interface | `rename.batch` | `--pattern WidgetConfig --replace GadgetConfig` |
-| Rename files | `file.rename` | `--pattern widget --replace repo --glob "**/*.ts"` |
-| Update text in markdown | `pattern.replace --backend ripgrep` | `--pattern widget --replace repo --glob "**/*.md"` |
-| Full terminology migration | `migrate` | `--from widget --to repo` |
-| **API migration (complex patterns)** | `pattern.migrate` | `--patterns "oldApi()" --prompt "migrate to newApi"` |
+| You want to...                       | Command                             | Example                                              |
+| ------------------------------------ | ----------------------------------- | ---------------------------------------------------- |
+| Rename TypeScript function/variable  | `rename.batch`                      | `--pattern createWidget --replace createGadget`      |
+| Rename TypeScript type/interface     | `rename.batch`                      | `--pattern WidgetConfig --replace GadgetConfig`      |
+| Rename files                         | `file.rename`                       | `--pattern widget --replace repo --glob "**/*.ts"`   |
+| Update text in markdown              | `pattern.replace --backend ripgrep` | `--pattern widget --replace repo --glob "**/*.md"`   |
+| Full terminology migration           | `migrate`                           | `--from widget --to repo`                            |
+| **API migration (complex patterns)** | `pattern.migrate`                   | `--patterns "oldApi()" --prompt "migrate to newApi"` |
 
 ---
 
@@ -110,6 +114,7 @@ ls **/repo*.ts 2>/dev/null || echo "No existing repo files"
 ### Phase 2: File Renames
 
 Rename files FIRST (before symbol renames) because:
+
 - Import paths need to be valid for ts-morph to work
 - File renames update import paths automatically
 
@@ -207,19 +212,20 @@ bun run test:all
 
 ## Tool Selection
 
-| What you're changing | File Type | Backend | Command |
-|---------------------|-----------|---------|---------|
-| **File names** | any | file-ops | `file.rename` |
-| TypeScript/JS identifiers | .ts, .tsx, .js, .jsx | ts-morph | `rename.batch` |
-| **API patterns (complex)** | .ts, .tsx | LLM | `pattern.migrate` |
-| Go, Rust, Python structural patterns | .go, .rs, .py | ast-grep | `pattern.replace` |
-| JSON/YAML values | .json, .yaml | ast-grep | `pattern.replace` |
-| Text/markdown/comments | .md, .txt, any | ripgrep | `pattern.replace` |
-| Wiki links only | .md | wikilink | `wikilink.rename` |
-| package.json paths | package.json | package-json | `package.rename` |
-| tsconfig.json paths | tsconfig*.json | tsconfig-json | `tsconfig.rename` |
+| What you're changing                 | File Type            | Backend       | Command           |
+| ------------------------------------ | -------------------- | ------------- | ----------------- |
+| **File names**                       | any                  | file-ops      | `file.rename`     |
+| TypeScript/JS identifiers            | .ts, .tsx, .js, .jsx | ts-morph      | `rename.batch`    |
+| **API patterns (complex)**           | .ts, .tsx            | LLM           | `pattern.migrate` |
+| Go, Rust, Python structural patterns | .go, .rs, .py        | ast-grep      | `pattern.replace` |
+| JSON/YAML values                     | .json, .yaml         | ast-grep      | `pattern.replace` |
+| Text/markdown/comments               | .md, .txt, any       | ripgrep       | `pattern.replace` |
+| Wiki links only                      | .md                  | wikilink      | `wikilink.rename` |
+| package.json paths                   | package.json         | package-json  | `package.rename`  |
+| tsconfig.json paths                  | tsconfig\*.json      | tsconfig-json | `tsconfig.rename` |
 
 **`file.rename` auto-detects file type** and updates references:
+
 - `.ts/.tsx/.js/.jsx` → updates import paths
 - `.md/.markdown/.mdx` → updates `[[wikilinks]]` (Obsidian, Foam, etc.)
 - `package.json` → updates exports, main, types, bin paths
@@ -228,6 +234,7 @@ bun run test:all
 **CRITICAL for TypeScript**: Always use ts-morph (via `rename.batch`) for identifiers. It handles destructuring, arrow function params, and nested scopes that text-based tools miss.
 
 **Dependencies:**
+
 - ts-morph: bundled (no external CLI)
 - ast-grep: requires `sg` CLI (`brew install ast-grep`)
 - ripgrep: requires `rg` CLI (usually pre-installed)
@@ -238,54 +245,54 @@ bun run test:all
 
 ### File Operations
 
-| Command | Purpose |
-|---------|---------|
-| `file.find --pattern <p> --replace <r> [--glob]` | Find files to rename |
-| `file.rename --pattern <p> --replace <r> [--glob] [--output] [--check-conflicts]` | Create file rename proposal |
-| `file.verify <file>` | Verify file editset can be applied |
-| `file.apply <file> [--dry-run]` | Apply file renames |
+| Command                                                                           | Purpose                            |
+| --------------------------------------------------------------------------------- | ---------------------------------- |
+| `file.find --pattern <p> --replace <r> [--glob]`                                  | Find files to rename               |
+| `file.rename --pattern <p> --replace <r> [--glob] [--output] [--check-conflicts]` | Create file rename proposal        |
+| `file.verify <file>`                                                              | Verify file editset can be applied |
+| `file.apply <file> [--dry-run]`                                                   | Apply file renames                 |
 
 ### TypeScript/JavaScript (ts-morph)
 
-| Command | Purpose |
-|---------|---------|
-| `symbol.at <file> <line> [col]` | Find symbol at location |
-| `refs.list <symbolKey>` | List all references to a symbol |
-| `symbols.find --pattern <regex>` | Find symbols matching pattern |
-| `rename.propose <key> <new>` | Single symbol rename proposal |
-| `rename.batch --pattern <p> --replace <r> [--check-conflicts]` | Batch rename proposal |
+| Command                                                        | Purpose                         |
+| -------------------------------------------------------------- | ------------------------------- |
+| `symbol.at <file> <line> [col]`                                | Find symbol at location         |
+| `refs.list <symbolKey>`                                        | List all references to a symbol |
+| `symbols.find --pattern <regex>`                               | Find symbols matching pattern   |
+| `rename.propose <key> <new>`                                   | Single symbol rename proposal   |
+| `rename.batch --pattern <p> --replace <r> [--check-conflicts]` | Batch rename proposal           |
 
 ### Multi-Language (ast-grep/ripgrep)
 
-| Command | Purpose |
-|---------|---------|
-| `pattern.find --pattern <p> [--glob] [--backend]` | Find structural patterns |
-| `pattern.replace --pattern <p> --replace <r> [--glob] [--backend]` | Pattern replace proposal |
-| `pattern.migrate --patterns <p1,p2> --prompt <text> [--glob]` | LLM-powered API migration |
-| `backends.list` | List available backends |
+| Command                                                            | Purpose                   |
+| ------------------------------------------------------------------ | ------------------------- |
+| `pattern.find --pattern <p> [--glob] [--backend]`                  | Find structural patterns  |
+| `pattern.replace --pattern <p> --replace <r> [--glob] [--backend]` | Pattern replace proposal  |
+| `pattern.migrate --patterns <p1,p2> --prompt <text> [--glob]`      | LLM-powered API migration |
+| `backends.list`                                                    | List available backends   |
 
 ### Editset Operations
 
-| Command | Purpose |
-|---------|---------|
-| `editset.select <file> --include/--exclude` | Filter editset refs |
-| `editset.verify <file>` | Check editset can be applied |
-| `editset.apply <file> [--dry-run]` | Apply with checksum verification |
+| Command                                     | Purpose                          |
+| ------------------------------------------- | -------------------------------- |
+| `editset.select <file> --include/--exclude` | Filter editset refs              |
+| `editset.verify <file>`                     | Check editset can be applied     |
+| `editset.apply <file> [--dry-run]`          | Apply with checksum verification |
 
 ### Package.json Operations
 
-| Command | Purpose |
-|---------|---------|
-| `package.find --target <file>` | Find package.json refs to a file |
-| `package.rename --old <path> --new <path>` | Update paths when file renamed |
-| `package.broken` | Find broken paths in package.json |
+| Command                                    | Purpose                           |
+| ------------------------------------------ | --------------------------------- |
+| `package.find --target <file>`             | Find package.json refs to a file  |
+| `package.rename --old <path> --new <path>` | Update paths when file renamed    |
+| `package.broken`                           | Find broken paths in package.json |
 
 ### TSConfig.json Operations
 
-| Command | Purpose |
-|---------|---------|
-| `tsconfig.find --target <file>` | Find tsconfig.json refs to a file |
-| `tsconfig.rename --old <path> --new <path>` | Update paths when file renamed |
+| Command                                     | Purpose                           |
+| ------------------------------------------- | --------------------------------- |
+| `tsconfig.find --target <file>`             | Find tsconfig.json refs to a file |
+| `tsconfig.rename --old <path> --new <path>` | Update paths when file renamed    |
 
 ---
 
@@ -315,6 +322,7 @@ bun tools/refactor.ts file.apply file-renames.json
 ```
 
 **Result**:
+
 - `src/user-service.ts` → `src/account-service.ts`
 - `src/testing/mock-user-service.ts` → `src/testing/mock-account-service.ts`
 - `UserServiceConfig.ts` → `AccountServiceConfig.ts` (case preserved)
@@ -339,12 +347,14 @@ bun tools/refactor.ts editset.apply import-updates.json
 ```
 
 **Before**:
+
 ```typescript
 import { createUser } from "./user-service"
 import { UserService } from "../services/user-service"
 ```
 
 **After**:
+
 ```typescript
 import { createUser } from "./account-service"
 import { UserService } from "../services/account-service"
@@ -372,6 +382,7 @@ bun tools/refactor.ts editset.apply symbol-renames.json
 ```
 
 **Handles correctly**:
+
 ```typescript
 // Function declaration
 export function createWidget(config: Config) { }  → createGadget
@@ -406,6 +417,7 @@ bun tools/refactor.ts editset.apply type-renames.json
 ```
 
 **Handles correctly**:
+
 ```typescript
 // Interface definition
 export interface ApiClient { }  → HttpClient
@@ -452,6 +464,7 @@ bun tools/refactor.ts editset.apply docs-updates.json
 ```
 
 **Updates**:
+
 ```typescript
 // This creates a new widget  → gadget
 const msg = "Widget not found"  → "Gadget not found"
@@ -459,8 +472,9 @@ const msg = "Widget not found"  → "Gadget not found"
 ```
 
 ```markdown
-# Widget Guide  → Gadget Guide
-Create a widget with...  → Create a gadget with...
+# Widget Guide → Gadget Guide
+
+Create a widget with... → Create a gadget with...
 ```
 
 ---
@@ -481,12 +495,14 @@ bun tools/refactor.ts editset.apply go-logging.json
 ```
 
 **Before**:
+
 ```go
 fmt.Println("Starting server")
 fmt.Println(err.Error())
 ```
 
 **After**:
+
 ```go
 log.Info("Starting server")
 log.Info(err.Error())
@@ -557,13 +573,13 @@ bun tools/refactor.ts editset.apply filtered-editset.json
 
 The tool preserves case during renames:
 
-| Original | Pattern | Replacement | Result |
-|----------|---------|-------------|--------|
-| `widget` | `widget` | `repo` | `repo` |
-| `Repo` | `widget` | `repo` | `Repo` |
-| `REPO` | `widget` | `repo` | `REPO` |
-| `widgetPath` | `widget` | `repo` | `repoPath` |
-| `WidgetConfig.ts` | `widget` | `repo` | `GadgetConfig.ts` |
+| Original          | Pattern  | Replacement | Result            |
+| ----------------- | -------- | ----------- | ----------------- |
+| `widget`          | `widget` | `repo`      | `repo`            |
+| `Repo`            | `widget` | `repo`      | `Repo`            |
+| `REPO`            | `widget` | `repo`      | `REPO`            |
+| `widgetPath`      | `widget` | `repo`      | `repoPath`        |
+| `WidgetConfig.ts` | `widget` | `repo`      | `GadgetConfig.ts` |
 
 ---
 
@@ -573,20 +589,21 @@ The tool preserves case during renames:
 
 ### File Conflicts
 
-| Conflict Type | Resolution Strategy |
-|--------------|---------------------|
+| Conflict Type             | Resolution Strategy          |
+| ------------------------- | ---------------------------- |
 | Target exists (duplicate) | Merge content, delete source |
-| Target exists (different) | Rename to avoid collision |
-| Same path (no-op) | Skip (no change needed) |
+| Target exists (different) | Rename to avoid collision    |
+| Same path (no-op)         | Skip (no change needed)      |
 
 ### Symbol Conflicts
 
-| Conflict Type | Resolution Strategy |
-|--------------|---------------------|
-| Target name exists | Check if same symbol (safe to merge) or different (needs rename) |
-| Multiple symbols same name | May be scoped (function-local vs module) - often safe |
+| Conflict Type              | Resolution Strategy                                              |
+| -------------------------- | ---------------------------------------------------------------- |
+| Target name exists         | Check if same symbol (safe to merge) or different (needs rename) |
+| Multiple symbols same name | May be scoped (function-local vs module) - often safe            |
 
 **Process:**
+
 1. Run `--check-conflicts` first
 2. Document each conflict and its resolution
 3. Get user approval on resolution strategy
@@ -603,11 +620,11 @@ git rev-parse --is-inside-work-tree 2>/dev/null
 git status --porcelain
 ```
 
-| Situation | Action |
-|-----------|--------|
-| Git repo, clean working tree | ✅ Proceed |
+| Situation                     | Action                      |
+| ----------------------------- | --------------------------- |
+| Git repo, clean working tree  | ✅ Proceed                  |
 | Git repo, uncommitted changes | ⚠️ Ask user to commit first |
-| Not a git repo | ⚠️ Warn: no undo available |
+| Not a git repo                | ⚠️ Warn: no undo available  |
 
 ---
 
@@ -636,13 +653,13 @@ Before making changes, gather project context:
 
 **Be aggressive. Tests catch mistakes.**
 
-| Context | Confidence |
-|---------|------------|
-| Our code (`const widgetRoot`) | HIGH |
-| Our compound identifier (`widgetHelper`) | HIGH |
-| Our error message (`"widget not found"`) | HIGH |
+| Context                                  | Confidence             |
+| ---------------------------------------- | ---------------------- |
+| Our code (`const widgetRoot`)            | HIGH                   |
+| Our compound identifier (`widgetHelper`) | HIGH                   |
+| Our error message (`"widget not found"`) | HIGH                   |
 | External reference (`"Obsidian widget"`) | LOW - may need to keep |
-| URL/path (`widget.example.com`) | LOW |
+| URL/path (`widget.example.com`)          | LOW                    |
 
 **Default to HIGH** unless clearly external.
 
@@ -672,12 +689,14 @@ interface TestEnv { widgetDir: string }  // property definition
 **Claude's plan:**
 
 1. **Analyze scope**
+
    ```bash
    grep -ri widget . --include="*.ts" | wc -l
    find . -name "*widget*" -not -path "./node_modules/*"
    ```
 
 2. **Check ALL conflicts**
+
    ```bash
    # File conflicts
    bun tools/refactor.ts file.rename --pattern widget --replace repo --check-conflicts
@@ -725,12 +744,12 @@ Editsets now include enriched context fields that allow an LLM to review and sel
 
 Each reference in an editset includes:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `kind` | `"call"` \| `"decl"` \| `"type"` \| `"string"` \| `"comment"` | What kind of reference this is |
-| `scope` | `string \| null` | Enclosing function/class name, or null for module-level |
-| `ctx` | `string[]` | Array of context lines with `►` marker on the matching line |
-| `replace` | `string \| null` | `null` to skip this reference, `string` for custom replacement |
+| Field     | Type                                                          | Description                                                    |
+| --------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| `kind`    | `"call"` \| `"decl"` \| `"type"` \| `"string"` \| `"comment"` | What kind of reference this is                                 |
+| `scope`   | `string \| null`                                              | Enclosing function/class name, or null for module-level        |
+| `ctx`     | `string[]`                                                    | Array of context lines with `►` marker on the matching line    |
+| `replace` | `string \| null`                                              | `null` to skip this reference, `string` for custom replacement |
 
 ### Workflow
 
@@ -758,7 +777,12 @@ Given an editset with these references:
 ```json
 {
   "refs": [
-    { "id": "a1b2", "kind": "decl", "scope": "createWidget", "replace": "repo" },
+    {
+      "id": "a1b2",
+      "kind": "decl",
+      "scope": "createWidget",
+      "replace": "repo"
+    },
     { "id": "b2c3", "kind": "type", "scope": null, "replace": "repo" },
     { "id": "c3d4", "kind": "comment", "scope": null, "replace": "repo" }
   ]
@@ -766,6 +790,7 @@ Given an editset with these references:
 ```
 
 An LLM might decide:
+
 - Keep `a1b2` as-is (standard replacement)
 - Change `b2c3` to `"Repository"` (capitalize for type name)
 - Set `c3d4` to `null` (skip comment, it refers to external Obsidian widget)
@@ -791,6 +816,7 @@ The `ctx` field shows surrounding lines with the match marked:
 ```
 
 This helps LLMs understand whether a reference is:
+
 - Internal code (safe to rename)
 - External reference (may need to preserve)
 - Documentation (may need different wording)
@@ -819,11 +845,11 @@ bun tools/refactor.ts migrate --from widget --to repo --glob "**/*.{ts,tsx,md}"
 
 ### What Migrate Does
 
-| Phase | Description | Output File |
-|-------|-------------|-------------|
-| 1. File renames | Rename files containing pattern | `01-file-renames.json` |
+| Phase             | Description                         | Output File              |
+| ----------------- | ----------------------------------- | ------------------------ |
+| 1. File renames   | Rename files containing pattern     | `01-file-renames.json`   |
 | 2. Symbol renames | TypeScript identifiers via ts-morph | `02-symbol-renames.json` |
-| 3. Text patterns | Comments, strings via ripgrep | `03-text-patterns.json` |
+| 3. Text patterns  | Comments, strings via ripgrep       | `03-text-patterns.json`  |
 
 After running, review each editset and apply:
 
@@ -841,19 +867,20 @@ bun tools/refactor.ts editset.apply .editsets/03-text-patterns.json
 
 ### Migrate Command Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--from <pattern>` | Pattern to match (required) | - |
-| `--to <replacement>` | Replacement string (required) | - |
-| `--glob <glob>` | File glob filter | `**/*.{ts,tsx}` |
-| `--dry-run` | Preview without creating editsets | false |
-| `--output <dir>` | Output directory for editsets | `.editsets`|
+| Flag                 | Description                       | Default         |
+| -------------------- | --------------------------------- | --------------- |
+| `--from <pattern>`   | Pattern to match (required)       | -               |
+| `--to <replacement>` | Replacement string (required)     | -               |
+| `--glob <glob>`      | File glob filter                  | `**/*.{ts,tsx}` |
+| `--dry-run`          | Preview without creating editsets | false           |
+| `--output <dir>`     | Output directory for editsets     | `.editsets`     |
 
 ---
 
 ## LLM-Powered API Migration (pattern.migrate)
 
 For complex API migrations where simple find/replace isn't enough, use `pattern.migrate`. This command:
+
 1. **Searches** for patterns using ripgrep
 2. **Gathers context** around each match
 3. **Sends to LLM** in one call to determine correct replacements
@@ -862,6 +889,7 @@ For complex API migrations where simple find/replace isn't enough, use `pattern.
 ### When to Use pattern.migrate
 
 Use `pattern.migrate` instead of `pattern.replace` when:
+
 - Transformations require **understanding context** (e.g., adding `await`, changing variable names)
 - Multiple **related patterns** need coordinated changes
 - Replacements involve **value mapping** (e.g., ANSI codes → key names)
@@ -900,14 +928,14 @@ bun tools/refactor.ts editset.apply /tmp/migrate.json
 
 ### Command Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--patterns <p1,p2,...>` | Comma-separated search patterns (required) | - |
-| `--prompt <text>` | Migration instructions for LLM (required) | - |
-| `--glob <glob>` | File filter | `**/*.{ts,tsx}` |
-| `--output <file>` | Editset output file | `/tmp/migrate.json` |
-| `--model <model>` | Override LLM model | best available |
-| `--dry-run` | Preview prompt without calling LLM | false |
+| Flag                     | Description                                | Default             |
+| ------------------------ | ------------------------------------------ | ------------------- |
+| `--patterns <p1,p2,...>` | Comma-separated search patterns (required) | -                   |
+| `--prompt <text>`        | Migration instructions for LLM (required)  | -                   |
+| `--glob <glob>`          | File filter                                | `**/*.{ts,tsx}`     |
+| `--output <file>`        | Editset output file                        | `/tmp/migrate.json` |
+| `--model <model>`        | Override LLM model                         | best available      |
+| `--dry-run`              | Preview prompt without calling LLM         | false               |
 
 ### Workflow
 
@@ -940,6 +968,7 @@ bun tsc --noEmit && bun run test:fast
 ### Writing Good Migration Prompts
 
 The LLM sees each match with ~3 lines of context. Write prompts that:
+
 1. **List all transformation rules** clearly with before → after
 2. **Include edge cases** (e.g., what to do with `stripAnsi()` wrappers)
 3. **Specify async handling** if needed (when to add `await`)
@@ -996,31 +1025,31 @@ When an LLM reviews an editset, it sees enriched context for each reference:
       "range": [12, 25, 12, 30],
       "kind": "string",
       "scope": "errorHandler",
-      "ctx": [
-        "► throw new Error(\"vault not found\");"
-      ],
+      "ctx": ["► throw new Error(\"vault not found\");"],
       "replace": "repo",
       "preview": "throw new Error(\"widget not found\");",
       "checksum": "def456...",
       "selected": true
     }
   ],
-  "edits": [ /* ... byte-level edits */ ],
+  "edits": [
+    /* ... byte-level edits */
+  ],
   "createdAt": "2024-01-24T12:00:00.000Z"
 }
 ```
 
 ### Field Reference
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `refId` | string | Stable identifier for this reference |
-| `kind` | `"call"` \| `"decl"` \| `"type"` \| `"string"` \| `"comment"` | Semantic kind |
-| `scope` | string \| null | Enclosing function/class, or null for module-level |
-| `ctx` | string[] | Context lines with `►` marker on match line |
-| `replace` | string \| null | Replacement text, or null to skip |
-| `line` | number | 1-indexed line number |
-| `range` | [number, number, number, number] | [startLine, startCol, endLine, endCol] |
+| Field     | Type                                                          | Description                                        |
+| --------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| `refId`   | string                                                        | Stable identifier for this reference               |
+| `kind`    | `"call"` \| `"decl"` \| `"type"` \| `"string"` \| `"comment"` | Semantic kind                                      |
+| `scope`   | string \| null                                                | Enclosing function/class, or null for module-level |
+| `ctx`     | string[]                                                      | Context lines with `►` marker on match line        |
+| `replace` | string \| null                                                | Replacement text, or null to skip                  |
+| `line`    | number                                                        | 1-indexed line number                              |
+| `range`   | [number, number, number, number]                              | [startLine, startCol, endLine, endCol]             |
 
 ---
 
@@ -1052,17 +1081,17 @@ The patch is a simple JSON object mapping refIds to actions:
 
 ```json
 {
-  "refId1": "custom replacement",  // Use this replacement instead of default
-  "refId2": null,                   // Skip this reference
+  "refId1": "custom replacement", // Use this replacement instead of default
+  "refId2": null // Skip this reference
   // refId3 not mentioned           // Apply with default replacement
 }
 ```
 
-| Patch Value | Action |
-|-------------|--------|
-| `"string"` | Use this replacement text |
-| `null` | Skip this reference (don't apply) |
-| *(not in patch)* | Apply with default `to` replacement |
+| Patch Value      | Action                              |
+| ---------------- | ----------------------------------- |
+| `"string"`       | Use this replacement text           |
+| `null`           | Skip this reference (don't apply)   |
+| _(not in patch)_ | Apply with default `to` replacement |
 
 ### Full Editset Patch
 
@@ -1088,11 +1117,13 @@ The patch command extracts `refId` and `replace` from each ref.
 **Scenario**: Rename `widgetPath` to `repoPath` — appears in destructuring patterns
 
 **Manual grep would find:**
+
 ```typescript
-const widgetPath = "/path/to/widget"  // ✓ obvious
+const widgetPath = "/path/to/widget" // ✓ obvious
 ```
 
 **But MISS these (ts-morph catches them):**
+
 ```typescript
 // Destructuring in function parameter
 export function init({ widgetPath, config }: Options) {
@@ -1100,16 +1131,19 @@ export function init({ widgetPath, config }: Options) {
 }
 
 // Nested destructuring
-const { paths: { widgetPath } } = config
+const {
+  paths: { widgetPath },
+} = config
 
 // Arrow function parameter destructuring
 const handler = ({ widgetPath }: Ctx) => widgetPath
 
 // Object shorthand
-return { widgetPath }  // property AND value both renamed
+return { widgetPath } // property AND value both renamed
 ```
 
 **Command:**
+
 ```bash
 bun tools/refactor.ts rename.batch --pattern widgetPath --replace repoPath --output edits.json
 bun tools/refactor.ts editset.apply edits.json
@@ -1123,6 +1157,7 @@ bun tools/refactor.ts editset.apply edits.json
 **Scenario**: Rename `Widget` to `Gadget` — used in index.ts re-exports
 
 **Manual editing misses:**
+
 ```typescript
 // src/index.ts - barrel file
 export { Widget } from "./widget"
@@ -1134,6 +1169,7 @@ export { Widget as DefaultWidget } from "./Widget"
 ```
 
 **ts-morph finds ALL of these:**
+
 ```bash
 bun tools/refactor.ts rename.batch --pattern Widget --replace Gadget --output edits.json
 # Found: 89 references across 23 files including all re-exports
@@ -1146,6 +1182,7 @@ bun tools/refactor.ts rename.batch --pattern Widget --replace Gadget --output ed
 **Scenario**: Rename `UserService` interface — used in type-only imports
 
 **Manual editing risks:**
+
 ```typescript
 // Type-only import - easy to miss with grep
 import type { UserService } from "./services"
@@ -1158,6 +1195,7 @@ function process<T extends UserService>(svc: T) {}
 ```
 
 **ts-morph finds all patterns:**
+
 ```bash
 bun tools/refactor.ts rename.batch --pattern UserService --replace AccountService --check-conflicts
 bun tools/refactor.ts rename.batch --pattern UserService --replace AccountService --output edits.json
@@ -1178,6 +1216,7 @@ function initApp(config) {}
 ```
 
 **ripgrep backend catches JSDoc:**
+
 ```bash
 bun tools/refactor.ts pattern.replace \
   --pattern parseConfig \
@@ -1203,6 +1242,7 @@ const { handler } = await import(`./user-api`)
 ```
 
 **Two-step approach:**
+
 ```bash
 # 1. Rename file + static imports
 bun tools/refactor.ts file.rename --pattern user-api --replace account-api --output files.json
@@ -1230,14 +1270,15 @@ export function createWidget() {}
 
 // tests/widget.test.ts
 vi.mock("../widget", () => ({
-  createWidget: vi.fn(),  // Mock uses same name
+  createWidget: vi.fn(), // Mock uses same name
 }))
 
 // tests/fixtures/widget-fixture.ts
-export const mockCreateWidget = () => {}  // Compound identifier
+export const mockCreateWidget = () => {} // Compound identifier
 ```
 
 **ts-morph renames ALL including mocks:**
+
 ```bash
 bun tools/refactor.ts rename.batch --pattern createWidget --replace createGadget --output edits.json
 # Found in: src/widget.ts, 12 test files, 3 fixture files
@@ -1250,27 +1291,29 @@ bun tools/refactor.ts rename.batch --pattern createWidget --replace createGadget
 **Scenario**: Rename all `widget` occurrences — different casings exist
 
 ```typescript
-const widget = {}           // lowercase
-const Repo = {}           // PascalCase
-const REPO_PATH = ""      // SCREAMING_CASE
-const widgetConfig = {}     // camelCase compound
-class RepoManager {}      // PascalCase compound
-const REPO_OPTIONS = {}   // SCREAMING compound
+const widget = {} // lowercase
+const Repo = {} // PascalCase
+const REPO_PATH = "" // SCREAMING_CASE
+const widgetConfig = {} // camelCase compound
+class RepoManager {} // PascalCase compound
+const REPO_OPTIONS = {} // SCREAMING compound
 ```
 
 **Automatic case preservation:**
+
 ```bash
 bun tools/refactor.ts rename.batch --pattern widget --replace repo --output edits.json
 ```
 
 **Result:**
+
 ```typescript
-const repo = {}            // lowercase preserved
-const Repo = {}            // PascalCase preserved
-const REPO_PATH = ""       // SCREAMING_CASE preserved
-const repoConfig = {}      // camelCase compound
-class RepoManager {}       // PascalCase compound
-const REPO_OPTIONS = {}    // SCREAMING compound
+const repo = {} // lowercase preserved
+const Repo = {} // PascalCase preserved
+const REPO_PATH = "" // SCREAMING_CASE preserved
+const repoConfig = {} // camelCase compound
+class RepoManager {} // PascalCase compound
+const REPO_OPTIONS = {} // SCREAMING compound
 ```
 
 ---
@@ -1288,6 +1331,7 @@ packages/
 ```
 
 **Single command handles all:**
+
 ```bash
 bun tools/refactor.ts migrate --from widget --to repo --glob "packages/**/*.{ts,tsx}"
 
@@ -1339,6 +1383,7 @@ Is this a terminology migration (file names + code + docs)?
 ```
 
 **Use `pattern.migrate` when:**
+
 - Old → new patterns have different structures (not just name changes)
 - Transformations need context awareness (adding `await`, changing variable scope)
 - Multiple related patterns need coordinated changes
@@ -1348,12 +1393,12 @@ Is this a terminology migration (file names + code + docs)?
 
 ## Performance Comparison
 
-| Task | Manual Edits | Batch Refactor |
-|------|--------------|----------------|
-| Rename function (50 refs) | ~50 Edit calls | 2 commands |
-| Rename file + imports | Risk broken build | Atomic update |
-| Full terminology migration | Hours | Minutes |
-| Rollback on error | Manual git restore | Automatic (checksums) |
+| Task                       | Manual Edits       | Batch Refactor        |
+| -------------------------- | ------------------ | --------------------- |
+| Rename function (50 refs)  | ~50 Edit calls     | 2 commands            |
+| Rename file + imports      | Risk broken build  | Atomic update         |
+| Full terminology migration | Hours              | Minutes               |
+| Rollback on error          | Manual git restore | Automatic (checksums) |
 
 **Rule of thumb**: If you'd make more than 5 edits, use batch refactor
 
@@ -1365,13 +1410,13 @@ Is this a terminology migration (file names + code + docs)?
 
 **IMMEDIATELY STOP AND THINK** if you're about to use any of these:
 
-| Tool | What it does | Why you should stop |
-|------|--------------|---------------------|
-| `sed` | Stream editing | batch-refactor does this better with checksums |
-| `awk` | Pattern processing | batch-refactor handles this |
-| `perl -pe` | Regex replacement | batch-refactor does this safely |
-| `python -c` | Quick scripts | batch-refactor is purpose-built for this |
-| Manual `Edit` tool in loop | Many small edits | batch-refactor does this atomically |
+| Tool                       | What it does       | Why you should stop                            |
+| -------------------------- | ------------------ | ---------------------------------------------- |
+| `sed`                      | Stream editing     | batch-refactor does this better with checksums |
+| `awk`                      | Pattern processing | batch-refactor handles this                    |
+| `perl -pe`                 | Regex replacement  | batch-refactor does this safely                |
+| `python -c`                | Quick scripts      | batch-refactor is purpose-built for this       |
+| Manual `Edit` tool in loop | Many small edits   | batch-refactor does this atomically            |
 
 **Before using these, ask yourself:**
 

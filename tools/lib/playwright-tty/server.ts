@@ -196,10 +196,7 @@ export class PlaywrightTtyBackend {
           }
           return { success: true }
         } catch (err) {
-          if (
-            err instanceof Error &&
-            err.message.includes("Timeout")
-          ) {
+          if (err instanceof Error && err.message.includes("Timeout")) {
             return { success: false, timedOut: true }
           }
           throw err

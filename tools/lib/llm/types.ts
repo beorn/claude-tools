@@ -31,11 +31,11 @@ export type Model = z.infer<typeof ModelSchema>
 
 // Thinking levels (tiered cost/quality)
 export const ThinkingLevelSchema = z.enum([
-  "quick",     // Level 1: Single fast model (~$0.01)
-  "standard",  // Level 2: Single strong model (~$0.10)
-  "research",  // Level 3: Single deep research model (~$2-5)
+  "quick", // Level 1: Single fast model (~$0.01)
+  "standard", // Level 2: Single strong model (~$0.10)
+  "research", // Level 3: Single deep research model (~$2-5)
   "consensus", // Level 4: Multiple models + synthesis (~$1-3)
-  "deep",      // Level 5: All deep research models + consolidation (~$15-30)
+  "deep", // Level 5: All deep research models + consolidation (~$15-30)
 ])
 export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>
 
@@ -45,17 +45,23 @@ export const ModelResponseSchema = z.object({
   content: z.string(),
   responseId: z.string().optional(), // API response ID for recovery
   reasoning: z.string().optional(), // Extended thinking/chain-of-thought
-  citations: z.array(z.object({
-    title: z.string().optional(),
-    url: z.string(),
-    snippet: z.string().optional(),
-  })).optional(),
-  usage: z.object({
-    promptTokens: z.number(),
-    completionTokens: z.number(),
-    totalTokens: z.number(),
-    estimatedCost: z.number().optional(), // USD
-  }).optional(),
+  citations: z
+    .array(
+      z.object({
+        title: z.string().optional(),
+        url: z.string(),
+        snippet: z.string().optional(),
+      }),
+    )
+    .optional(),
+  usage: z
+    .object({
+      promptTokens: z.number(),
+      completionTokens: z.number(),
+      totalTokens: z.number(),
+      estimatedCost: z.number().optional(), // USD
+    })
+    .optional(),
   durationMs: z.number(),
   error: z.string().optional(),
 })
@@ -116,98 +122,414 @@ export type CompareOptions = z.infer<typeof CompareOptionsSchema>
 // Available models registry with pricing (per 1M tokens, USD)
 export const MODELS: Model[] = [
   // OpenAI - GPT-5 series
-  { provider: "openai", modelId: "gpt-5.2", displayName: "GPT-5.2", isDeepResearch: false, costTier: "high", inputPricePerM: 1.75, outputPricePerM: 14.00, typicalLatencyMs: 5000 },
-  { provider: "openai", modelId: "gpt-5.2-pro", displayName: "GPT-5.2 Pro", isDeepResearch: false, costTier: "very-high", inputPricePerM: 21.00, outputPricePerM: 168.00, typicalLatencyMs: 15000 },
-  { provider: "openai", modelId: "gpt-5.1-codex", displayName: "GPT-5.1 Codex", isDeepResearch: false, costTier: "high", inputPricePerM: 1.25, outputPricePerM: 10.00, typicalLatencyMs: 5000 },
-  { provider: "openai", modelId: "gpt-5.1-codex-mini", displayName: "GPT-5.1 Codex Mini", isDeepResearch: false, costTier: "medium", inputPricePerM: 0.30, outputPricePerM: 1.20, typicalLatencyMs: 2000 },
-  { provider: "openai", modelId: "gpt-5", displayName: "GPT-5", isDeepResearch: false, costTier: "high", inputPricePerM: 1.25, outputPricePerM: 10.00, typicalLatencyMs: 5000 },
-  { provider: "openai", modelId: "gpt-5-codex", displayName: "GPT-5 Codex", isDeepResearch: false, costTier: "high", inputPricePerM: 1.25, outputPricePerM: 10.00, typicalLatencyMs: 5000 },
-  { provider: "openai", modelId: "gpt-5-mini", displayName: "GPT-5 Mini", isDeepResearch: false, costTier: "medium", inputPricePerM: 0.30, outputPricePerM: 1.20, typicalLatencyMs: 2000 },
-  { provider: "openai", modelId: "gpt-5-nano", displayName: "GPT-5 Nano", isDeepResearch: false, costTier: "low", inputPricePerM: 0.10, outputPricePerM: 0.40, typicalLatencyMs: 1000 },
+  {
+    provider: "openai",
+    modelId: "gpt-5.2",
+    displayName: "GPT-5.2",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 1.75,
+    outputPricePerM: 14.0,
+    typicalLatencyMs: 5000,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-5.2-pro",
+    displayName: "GPT-5.2 Pro",
+    isDeepResearch: false,
+    costTier: "very-high",
+    inputPricePerM: 21.0,
+    outputPricePerM: 168.0,
+    typicalLatencyMs: 15000,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-5.1-codex",
+    displayName: "GPT-5.1 Codex",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 1.25,
+    outputPricePerM: 10.0,
+    typicalLatencyMs: 5000,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-5.1-codex-mini",
+    displayName: "GPT-5.1 Codex Mini",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 0.3,
+    outputPricePerM: 1.2,
+    typicalLatencyMs: 2000,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-5",
+    displayName: "GPT-5",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 1.25,
+    outputPricePerM: 10.0,
+    typicalLatencyMs: 5000,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-5-codex",
+    displayName: "GPT-5 Codex",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 1.25,
+    outputPricePerM: 10.0,
+    typicalLatencyMs: 5000,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-5-mini",
+    displayName: "GPT-5 Mini",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 0.3,
+    outputPricePerM: 1.2,
+    typicalLatencyMs: 2000,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-5-nano",
+    displayName: "GPT-5 Nano",
+    isDeepResearch: false,
+    costTier: "low",
+    inputPricePerM: 0.1,
+    outputPricePerM: 0.4,
+    typicalLatencyMs: 1000,
+  },
   // OpenAI - GPT-4 series
-  { provider: "openai", modelId: "gpt-4o-mini", displayName: "GPT-4o Mini", isDeepResearch: false, costTier: "low", inputPricePerM: 0.15, outputPricePerM: 0.60, typicalLatencyMs: 1500 },
-  { provider: "openai", modelId: "gpt-4o", displayName: "GPT-4o", isDeepResearch: false, costTier: "medium", inputPricePerM: 2.50, outputPricePerM: 10.00, typicalLatencyMs: 3000 },
-  { provider: "openai", modelId: "gpt-4.1", displayName: "GPT-4.1", isDeepResearch: false, costTier: "medium", inputPricePerM: 2.00, outputPricePerM: 8.00, typicalLatencyMs: 3000 },
+  {
+    provider: "openai",
+    modelId: "gpt-4o-mini",
+    displayName: "GPT-4o Mini",
+    isDeepResearch: false,
+    costTier: "low",
+    inputPricePerM: 0.15,
+    outputPricePerM: 0.6,
+    typicalLatencyMs: 1500,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-4o",
+    displayName: "GPT-4o",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 2.5,
+    outputPricePerM: 10.0,
+    typicalLatencyMs: 3000,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-4.1",
+    displayName: "GPT-4.1",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 2.0,
+    outputPricePerM: 8.0,
+    typicalLatencyMs: 3000,
+  },
   // OpenAI - O-series reasoning
-  { provider: "openai", modelId: "o3", displayName: "O3", isDeepResearch: false, costTier: "high", inputPricePerM: 2.00, outputPricePerM: 8.00, typicalLatencyMs: 10000 },
-  { provider: "openai", modelId: "o3-pro", displayName: "O3 Pro", isDeepResearch: false, costTier: "very-high", inputPricePerM: 10.00, outputPricePerM: 40.00, typicalLatencyMs: 20000 },
-  { provider: "openai", modelId: "o3-mini", displayName: "O3 Mini", isDeepResearch: false, costTier: "medium", inputPricePerM: 0.55, outputPricePerM: 2.20, typicalLatencyMs: 3000 },
-  { provider: "openai", modelId: "o4-mini", displayName: "O4 Mini", isDeepResearch: false, costTier: "medium", inputPricePerM: 1.10, outputPricePerM: 4.40, typicalLatencyMs: 3000 },
+  {
+    provider: "openai",
+    modelId: "o3",
+    displayName: "O3",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 2.0,
+    outputPricePerM: 8.0,
+    typicalLatencyMs: 10000,
+  },
+  {
+    provider: "openai",
+    modelId: "o3-pro",
+    displayName: "O3 Pro",
+    isDeepResearch: false,
+    costTier: "very-high",
+    inputPricePerM: 10.0,
+    outputPricePerM: 40.0,
+    typicalLatencyMs: 20000,
+  },
+  {
+    provider: "openai",
+    modelId: "o3-mini",
+    displayName: "O3 Mini",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 0.55,
+    outputPricePerM: 2.2,
+    typicalLatencyMs: 3000,
+  },
+  {
+    provider: "openai",
+    modelId: "o4-mini",
+    displayName: "O4 Mini",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 1.1,
+    outputPricePerM: 4.4,
+    typicalLatencyMs: 3000,
+  },
   // OpenAI - Deep Research
-  { provider: "openai", modelId: "o3-deep-research-2025-06-26", displayName: "O3 Deep Research", isDeepResearch: true, costTier: "very-high", inputPricePerM: 10.00, outputPricePerM: 40.00, typicalLatencyMs: 180000 },
-  { provider: "openai", modelId: "o4-mini-deep-research-2025-06-26", displayName: "O4 Mini Deep Research", isDeepResearch: true, costTier: "high", inputPricePerM: 2.00, outputPricePerM: 8.00, typicalLatencyMs: 60000 },
+  {
+    provider: "openai",
+    modelId: "o3-deep-research-2025-06-26",
+    displayName: "O3 Deep Research",
+    isDeepResearch: true,
+    costTier: "very-high",
+    inputPricePerM: 10.0,
+    outputPricePerM: 40.0,
+    typicalLatencyMs: 180000,
+  },
+  {
+    provider: "openai",
+    modelId: "o4-mini-deep-research-2025-06-26",
+    displayName: "O4 Mini Deep Research",
+    isDeepResearch: true,
+    costTier: "high",
+    inputPricePerM: 2.0,
+    outputPricePerM: 8.0,
+    typicalLatencyMs: 60000,
+  },
 
   // Anthropic
-  { provider: "anthropic", modelId: "claude-opus-4-5-20251101", displayName: "Claude Opus 4.5", isDeepResearch: false, costTier: "very-high", inputPricePerM: 15.00, outputPricePerM: 75.00, typicalLatencyMs: 15000 },
-  { provider: "anthropic", modelId: "claude-sonnet-4-5-20250514", displayName: "Claude Sonnet 4.5", isDeepResearch: false, costTier: "high", inputPricePerM: 3.00, outputPricePerM: 15.00, typicalLatencyMs: 5000 },
-  { provider: "anthropic", modelId: "claude-opus-4-20250514", displayName: "Claude Opus 4", isDeepResearch: false, costTier: "high", inputPricePerM: 15.00, outputPricePerM: 75.00, typicalLatencyMs: 12000 },
-  { provider: "anthropic", modelId: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4", isDeepResearch: false, costTier: "medium", inputPricePerM: 3.00, outputPricePerM: 15.00, typicalLatencyMs: 4000 },
-  { provider: "anthropic", modelId: "claude-3-5-haiku-latest", displayName: "Claude 3.5 Haiku", isDeepResearch: false, costTier: "low", inputPricePerM: 0.25, outputPricePerM: 1.25, typicalLatencyMs: 1500 },
+  {
+    provider: "anthropic",
+    modelId: "claude-opus-4-5-20251101",
+    displayName: "Claude Opus 4.5",
+    isDeepResearch: false,
+    costTier: "very-high",
+    inputPricePerM: 15.0,
+    outputPricePerM: 75.0,
+    typicalLatencyMs: 15000,
+  },
+  {
+    provider: "anthropic",
+    modelId: "claude-sonnet-4-5-20250514",
+    displayName: "Claude Sonnet 4.5",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 3.0,
+    outputPricePerM: 15.0,
+    typicalLatencyMs: 5000,
+  },
+  {
+    provider: "anthropic",
+    modelId: "claude-opus-4-20250514",
+    displayName: "Claude Opus 4",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 15.0,
+    outputPricePerM: 75.0,
+    typicalLatencyMs: 12000,
+  },
+  {
+    provider: "anthropic",
+    modelId: "claude-sonnet-4-20250514",
+    displayName: "Claude Sonnet 4",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 3.0,
+    outputPricePerM: 15.0,
+    typicalLatencyMs: 4000,
+  },
+  {
+    provider: "anthropic",
+    modelId: "claude-3-5-haiku-latest",
+    displayName: "Claude 3.5 Haiku",
+    isDeepResearch: false,
+    costTier: "low",
+    inputPricePerM: 0.25,
+    outputPricePerM: 1.25,
+    typicalLatencyMs: 1500,
+  },
 
   // Google
-  { provider: "google", modelId: "gemini-3-pro-preview", displayName: "Gemini 3 Pro", isDeepResearch: false, costTier: "high", inputPricePerM: 1.25, outputPricePerM: 5.00, typicalLatencyMs: 5000 },
-  { provider: "google", modelId: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro", isDeepResearch: false, costTier: "medium", inputPricePerM: 1.25, outputPricePerM: 5.00, typicalLatencyMs: 4000 },
-  { provider: "google", modelId: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash", isDeepResearch: false, costTier: "low", inputPricePerM: 0.15, outputPricePerM: 0.60, typicalLatencyMs: 1500 },
-  { provider: "google", modelId: "gemini-2.0-flash", displayName: "Gemini 2.0 Flash", isDeepResearch: false, costTier: "low", inputPricePerM: 0.10, outputPricePerM: 0.40, typicalLatencyMs: 1000 },
-  { provider: "google", modelId: "gemini-2.0-flash-lite", displayName: "Gemini 2.0 Flash Lite", isDeepResearch: false, costTier: "low", inputPricePerM: 0.05, outputPricePerM: 0.20, typicalLatencyMs: 800 },
+  {
+    provider: "google",
+    modelId: "gemini-3-pro-preview",
+    displayName: "Gemini 3 Pro",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 1.25,
+    outputPricePerM: 5.0,
+    typicalLatencyMs: 5000,
+  },
+  {
+    provider: "google",
+    modelId: "gemini-2.5-pro",
+    displayName: "Gemini 2.5 Pro",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 1.25,
+    outputPricePerM: 5.0,
+    typicalLatencyMs: 4000,
+  },
+  {
+    provider: "google",
+    modelId: "gemini-2.5-flash",
+    displayName: "Gemini 2.5 Flash",
+    isDeepResearch: false,
+    costTier: "low",
+    inputPricePerM: 0.15,
+    outputPricePerM: 0.6,
+    typicalLatencyMs: 1500,
+  },
+  {
+    provider: "google",
+    modelId: "gemini-2.0-flash",
+    displayName: "Gemini 2.0 Flash",
+    isDeepResearch: false,
+    costTier: "low",
+    inputPricePerM: 0.1,
+    outputPricePerM: 0.4,
+    typicalLatencyMs: 1000,
+  },
+  {
+    provider: "google",
+    modelId: "gemini-2.0-flash-lite",
+    displayName: "Gemini 2.0 Flash Lite",
+    isDeepResearch: false,
+    costTier: "low",
+    inputPricePerM: 0.05,
+    outputPricePerM: 0.2,
+    typicalLatencyMs: 800,
+  },
 
   // xAI (Grok)
-  { provider: "xai", modelId: "grok-4", displayName: "Grok 4", isDeepResearch: false, costTier: "high", inputPricePerM: 2.00, outputPricePerM: 10.00, typicalLatencyMs: 5000 },
-  { provider: "xai", modelId: "grok-4-1-fast-reasoning", displayName: "Grok 4.1 Fast", isDeepResearch: false, costTier: "medium", inputPricePerM: 1.00, outputPricePerM: 5.00, typicalLatencyMs: 3000 },
-  { provider: "xai", modelId: "grok-3", displayName: "Grok 3", isDeepResearch: false, costTier: "medium", inputPricePerM: 1.00, outputPricePerM: 5.00, typicalLatencyMs: 3000 },
-  { provider: "xai", modelId: "grok-3-fast", displayName: "Grok 3 Fast", isDeepResearch: false, costTier: "low", inputPricePerM: 0.20, outputPricePerM: 1.00, typicalLatencyMs: 1500 },
+  {
+    provider: "xai",
+    modelId: "grok-4",
+    displayName: "Grok 4",
+    isDeepResearch: false,
+    costTier: "high",
+    inputPricePerM: 2.0,
+    outputPricePerM: 10.0,
+    typicalLatencyMs: 5000,
+  },
+  {
+    provider: "xai",
+    modelId: "grok-4-1-fast-reasoning",
+    displayName: "Grok 4.1 Fast",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 1.0,
+    outputPricePerM: 5.0,
+    typicalLatencyMs: 3000,
+  },
+  {
+    provider: "xai",
+    modelId: "grok-3",
+    displayName: "Grok 3",
+    isDeepResearch: false,
+    costTier: "medium",
+    inputPricePerM: 1.0,
+    outputPricePerM: 5.0,
+    typicalLatencyMs: 3000,
+  },
+  {
+    provider: "xai",
+    modelId: "grok-3-fast",
+    displayName: "Grok 3 Fast",
+    isDeepResearch: false,
+    costTier: "low",
+    inputPricePerM: 0.2,
+    outputPricePerM: 1.0,
+    typicalLatencyMs: 1500,
+  },
 
   // Perplexity
-  { provider: "perplexity", modelId: "sonar", displayName: "Perplexity Sonar", isDeepResearch: false, costTier: "low", inputPricePerM: 1.00, outputPricePerM: 1.00, typicalLatencyMs: 2000 },
-  { provider: "perplexity", modelId: "sonar-pro", displayName: "Perplexity Sonar Pro", isDeepResearch: true, costTier: "medium", inputPricePerM: 3.00, outputPricePerM: 15.00, typicalLatencyMs: 5000 },
-  { provider: "perplexity", modelId: "sonar-deep-research", displayName: "Perplexity Deep Research", isDeepResearch: true, costTier: "high", inputPricePerM: 5.00, outputPricePerM: 20.00, typicalLatencyMs: 120000 },
+  {
+    provider: "perplexity",
+    modelId: "sonar",
+    displayName: "Perplexity Sonar",
+    isDeepResearch: false,
+    costTier: "low",
+    inputPricePerM: 1.0,
+    outputPricePerM: 1.0,
+    typicalLatencyMs: 2000,
+  },
+  {
+    provider: "perplexity",
+    modelId: "sonar-pro",
+    displayName: "Perplexity Sonar Pro",
+    isDeepResearch: true,
+    costTier: "medium",
+    inputPricePerM: 3.0,
+    outputPricePerM: 15.0,
+    typicalLatencyMs: 5000,
+  },
+  {
+    provider: "perplexity",
+    modelId: "sonar-deep-research",
+    displayName: "Perplexity Deep Research",
+    isDeepResearch: true,
+    costTier: "high",
+    inputPricePerM: 5.0,
+    outputPricePerM: 20.0,
+    typicalLatencyMs: 120000,
+  },
 ]
 
 // Model lookup helpers
 export function getModel(idOrName: string): Model | undefined {
   const lower = idOrName.toLowerCase()
-  return MODELS.find(m =>
-    m.modelId.toLowerCase() === lower ||
-    m.displayName.toLowerCase() === lower ||
-    m.displayName.toLowerCase().replace(/\s+/g, "-") === lower
+  return MODELS.find(
+    (m) =>
+      m.modelId.toLowerCase() === lower ||
+      m.displayName.toLowerCase() === lower ||
+      m.displayName.toLowerCase().replace(/\s+/g, "-") === lower,
   )
 }
 
 export function getModelsForLevel(level: ThinkingLevel): Model[] {
   switch (level) {
     case "quick":
-      return MODELS.filter(m => m.costTier === "low" && !m.isDeepResearch).slice(0, 1)
+      return MODELS.filter(
+        (m) => m.costTier === "low" && !m.isDeepResearch,
+      ).slice(0, 1)
     case "standard":
-      return MODELS.filter(m => m.costTier === "medium" && !m.isDeepResearch).slice(0, 1)
+      return MODELS.filter(
+        (m) => m.costTier === "medium" && !m.isDeepResearch,
+      ).slice(0, 1)
     case "research":
-      return MODELS.filter(m => m.isDeepResearch).slice(0, 1)
+      return MODELS.filter((m) => m.isDeepResearch).slice(0, 1)
     case "consensus":
       // One model per provider (non-deep-research)
-      return MODELS.filter(m => !m.isDeepResearch && m.costTier !== "low")
-        .reduce((acc, m) => {
-          if (!acc.find(x => x.provider === m.provider)) acc.push(m)
-          return acc
-        }, [] as Model[])
+      return MODELS.filter(
+        (m) => !m.isDeepResearch && m.costTier !== "low",
+      ).reduce((acc, m) => {
+        if (!acc.find((x) => x.provider === m.provider)) acc.push(m)
+        return acc
+      }, [] as Model[])
     case "deep":
-      return MODELS.filter(m => m.isDeepResearch)
+      return MODELS.filter((m) => m.isDeepResearch)
     default:
       return [MODELS[0]!]
   }
 }
 
 export function getModelsByProvider(provider: Provider): Model[] {
-  return MODELS.filter(m => m.provider === provider)
+  return MODELS.filter((m) => m.provider === provider)
 }
 
 export function getDeepResearchModels(): Model[] {
-  return MODELS.filter(m => m.isDeepResearch)
+  return MODELS.filter((m) => m.isDeepResearch)
 }
 
 /**
  * Estimate cost for a query (USD)
  * Assumes ~500 input tokens and ~1000 output tokens for a typical query
  */
-export function estimateCost(model: Model, inputTokens = 500, outputTokens = 1000): number {
+export function estimateCost(
+  model: Model,
+  inputTokens = 500,
+  outputTokens = 1000,
+): number {
   const inputCost = (model.inputPricePerM ?? 0) * (inputTokens / 1_000_000)
   const outputCost = (model.outputPricePerM ?? 0) * (outputTokens / 1_000_000)
   return inputCost + outputCost
@@ -235,16 +557,22 @@ export function formatLatency(ms: number): string {
  * Get cheap model for question refinement
  */
 export function getCheapModel(): Model | undefined {
-  return MODELS.find(m => m.costTier === "low" && m.provider === "openai")
-    || MODELS.find(m => m.costTier === "low")
+  return (
+    MODELS.find((m) => m.costTier === "low" && m.provider === "openai") ||
+    MODELS.find((m) => m.costTier === "low")
+  )
 }
 
 /**
  * Check if model requires cost confirmation (expensive)
  */
-export function requiresConfirmation(model: Model, threshold = 0.10): boolean {
+export function requiresConfirmation(model: Model, threshold = 0.1): boolean {
   const estimatedCost = estimateCost(model)
-  return estimatedCost > threshold || model.costTier === "very-high" || model.isDeepResearch
+  return (
+    estimatedCost > threshold ||
+    model.costTier === "very-high" ||
+    model.isDeepResearch
+  )
 }
 
 /**
@@ -252,15 +580,34 @@ export function requiresConfirmation(model: Model, threshold = 0.10): boolean {
  */
 export const BEST_MODELS = {
   // Default query - best general-purpose models
-  default: ["gpt-5.2", "gemini-3-pro-preview", "claude-sonnet-4-5-20250514", "grok-4"],
+  default: [
+    "gpt-5.2",
+    "gemini-3-pro-preview",
+    "claude-sonnet-4-5-20250514",
+    "grok-4",
+  ],
   // Deep research - models with web search/citations
-  deep: ["o3-deep-research-2025-06-26", "sonar-deep-research", "o4-mini-deep-research-2025-06-26"],
+  deep: [
+    "o3-deep-research-2025-06-26",
+    "sonar-deep-research",
+    "o4-mini-deep-research-2025-06-26",
+  ],
   // Second opinion - prefer different provider than default
   opinion: ["gemini-3-pro-preview", "gemini-2.5-pro", "gpt-5.2", "grok-4"],
   // Debate - one from each major provider
-  debate: ["gpt-5.2", "gemini-3-pro-preview", "grok-4", "claude-sonnet-4-5-20250514"],
+  debate: [
+    "gpt-5.2",
+    "gemini-3-pro-preview",
+    "grok-4",
+    "claude-sonnet-4-5-20250514",
+  ],
   // Quick/cheap - fast and cheap
-  quick: ["gpt-5-nano", "gemini-2.0-flash-lite", "grok-3-fast", "claude-3-5-haiku-latest"],
+  quick: [
+    "gpt-5-nano",
+    "gemini-2.0-flash-lite",
+    "grok-3-fast",
+    "claude-3-5-haiku-latest",
+  ],
 }
 
 export type ModelMode = keyof typeof BEST_MODELS
@@ -270,7 +617,7 @@ export type ModelMode = keyof typeof BEST_MODELS
  */
 export function getBestAvailableModel(
   mode: ModelMode,
-  isProviderAvailable: (provider: Provider) => boolean
+  isProviderAvailable: (provider: Provider) => boolean,
 ): { model: Model | undefined; warning: string | undefined } {
   const candidates = BEST_MODELS[mode]
   const globalBest = getModel(candidates[0]!)
@@ -291,9 +638,9 @@ export function getBestAvailableModel(
 
   // No available model
   const envVars = candidates
-    .map(id => getModel(id))
+    .map((id) => getModel(id))
     .filter(Boolean)
-    .map(m => `${m!.displayName}: ${getProviderEnvVar(m!.provider)}`)
+    .map((m) => `${m!.displayName}: ${getProviderEnvVar(m!.provider)}`)
     .slice(0, 3)
     .join(", ")
 
@@ -309,7 +656,7 @@ export function getBestAvailableModel(
 export function getBestAvailableModels(
   mode: ModelMode,
   isProviderAvailable: (provider: Provider) => boolean,
-  count: number = 3
+  count: number = 3,
 ): { models: Model[]; warning: string | undefined } {
   const candidates = BEST_MODELS[mode]
   const available: Model[] = []
@@ -321,7 +668,7 @@ export function getBestAvailableModels(
 
     if (isProviderAvailable(model.provider)) {
       // Avoid duplicate providers for diversity
-      if (!available.find(m => m.provider === model.provider)) {
+      if (!available.find((m) => m.provider === model.provider)) {
         available.push(model)
       }
     } else {
@@ -336,7 +683,7 @@ export function getBestAvailableModels(
   if (unavailable.length > 0 && available.length < count) {
     const missing = unavailable
       .slice(0, 2)
-      .map(m => `${m.displayName} (${getProviderEnvVar(m.provider)})`)
+      .map((m) => `${m.displayName} (${getProviderEnvVar(m.provider)})`)
       .join(", ")
     warning = `More models available: ${missing}`
   }
@@ -347,12 +694,18 @@ export function getBestAvailableModels(
 // Helper to get env var for a provider (duplicated here to avoid circular import)
 function getProviderEnvVar(provider: Provider): string {
   switch (provider) {
-    case "openai": return "OPENAI_API_KEY"
-    case "anthropic": return "ANTHROPIC_API_KEY"
-    case "google": return "GOOGLE_GENERATIVE_AI_API_KEY"
-    case "xai": return "XAI_API_KEY"
-    case "perplexity": return "PERPLEXITY_API_KEY"
-    default: return `${(provider as string).toUpperCase()}_API_KEY`
+    case "openai":
+      return "OPENAI_API_KEY"
+    case "anthropic":
+      return "ANTHROPIC_API_KEY"
+    case "google":
+      return "GOOGLE_GENERATIVE_AI_API_KEY"
+    case "xai":
+      return "XAI_API_KEY"
+    case "perplexity":
+      return "PERPLEXITY_API_KEY"
+    default:
+      return `${(provider as string).toUpperCase()}_API_KEY`
   }
 }
 

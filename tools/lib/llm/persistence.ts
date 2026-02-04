@@ -5,7 +5,15 @@
  * if the process is interrupted. Supports recovery via OpenAI response ID.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, appendFileSync } from "fs"
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  unlinkSync,
+  appendFileSync,
+} from "fs"
 import { join } from "path"
 
 const CACHE_DIR = join(process.env.HOME ?? "~", ".cache", "beorn-tools")
@@ -53,7 +61,10 @@ export function getPartialPath(responseId: string): string {
 /**
  * Write initial metadata to partial file
  */
-export function writePartialHeader(path: string, metadata: PartialMetadata): void {
+export function writePartialHeader(
+  path: string,
+  metadata: PartialMetadata,
+): void {
   const header = `---
 response_id: ${metadata.responseId}
 model: ${metadata.model}
@@ -76,7 +87,10 @@ export function appendPartial(path: string, content: string): void {
 /**
  * Update metadata in partial file (e.g., sequence number, completion)
  */
-export function updatePartialMetadata(path: string, updates: Partial<PartialMetadata>): void {
+export function updatePartialMetadata(
+  path: string,
+  updates: Partial<PartialMetadata>,
+): void {
   if (!existsSync(path)) return
 
   const content = readFileSync(path, "utf-8")
@@ -121,7 +135,10 @@ export function updatePartialMetadata(path: string, updates: Partial<PartialMeta
 /**
  * Mark partial as complete and optionally delete it
  */
-export function completePartial(path: string, options: { delete?: boolean; usage?: PartialMetadata["usage"] } = {}): void {
+export function completePartial(
+  path: string,
+  options: { delete?: boolean; usage?: PartialMetadata["usage"] } = {},
+): void {
   if (options.delete) {
     if (existsSync(path)) {
       unlinkSync(path)
@@ -166,13 +183,17 @@ export function parsePartialFile(path: string): PartialFile | null {
       modelId: metadata["model_id"] || "",
       topic: metadata["topic"] || "",
       startedAt: metadata["started_at"] || "",
-      lastSequence: metadata["last_sequence"] ? parseInt(metadata["last_sequence"], 10) : undefined,
+      lastSequence: metadata["last_sequence"]
+        ? parseInt(metadata["last_sequence"], 10)
+        : undefined,
       completedAt: metadata["completed_at"],
-      usage: metadata["usage_total"] ? {
-        promptTokens: parseInt(metadata["usage_prompt"] || "0", 10),
-        completionTokens: parseInt(metadata["usage_completion"] || "0", 10),
-        totalTokens: parseInt(metadata["usage_total"] || "0", 10),
-      } : undefined,
+      usage: metadata["usage_total"]
+        ? {
+            promptTokens: parseInt(metadata["usage_prompt"] || "0", 10),
+            completionTokens: parseInt(metadata["usage_completion"] || "0", 10),
+            totalTokens: parseInt(metadata["usage_total"] || "0", 10),
+          }
+        : undefined,
     },
     content: bodyContent,
   }
@@ -181,10 +202,12 @@ export function parsePartialFile(path: string): PartialFile | null {
 /**
  * List all partial files (incomplete responses)
  */
-export function listPartials(options: { includeCompleted?: boolean } = {}): PartialFile[] {
+export function listPartials(
+  options: { includeCompleted?: boolean } = {},
+): PartialFile[] {
   ensureDir()
 
-  const files = readdirSync(PARTIALS_DIR).filter(f => f.endsWith(".md"))
+  const files = readdirSync(PARTIALS_DIR).filter((f) => f.endsWith(".md"))
   const partials: PartialFile[] = []
 
   for (const file of files) {
@@ -212,18 +235,22 @@ export function listPartials(options: { includeCompleted?: boolean } = {}): Part
 /**
  * Find partial by response ID
  */
-export function findPartialByResponseId(responseId: string): PartialFile | null {
+export function findPartialByResponseId(
+  responseId: string,
+): PartialFile | null {
   const partials = listPartials({ includeCompleted: true })
-  return partials.find(p => p.metadata.responseId === responseId) || null
+  return partials.find((p) => p.metadata.responseId === responseId) || null
 }
 
 /**
  * Clean up old partial files (older than maxAge)
  */
-export function cleanupPartials(maxAgeMs: number = 7 * 24 * 60 * 60 * 1000): number {
+export function cleanupPartials(
+  maxAgeMs: number = 7 * 24 * 60 * 60 * 1000,
+): number {
   ensureDir()
 
-  const files = readdirSync(PARTIALS_DIR).filter(f => f.endsWith(".md"))
+  const files = readdirSync(PARTIALS_DIR).filter((f) => f.endsWith(".md"))
   const now = Date.now()
   let deleted = 0
 

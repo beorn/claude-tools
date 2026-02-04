@@ -29,7 +29,14 @@ export interface QueryResult {
  * Query a single model
  */
 export async function queryModel(options: QueryOptions): Promise<QueryResult> {
-  const { question, model, systemPrompt, stream = false, onToken, context } = options
+  const {
+    question,
+    model,
+    systemPrompt,
+    stream = false,
+    onToken,
+    context,
+  } = options
   const startTime = Date.now()
 
   // Check provider availability
@@ -59,7 +66,9 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
   const languageModel = getLanguageModel(model)
 
   const messages = [
-    ...(systemPrompt ? [{ role: "system" as const, content: systemPrompt }] : []),
+    ...(systemPrompt
+      ? [{ role: "system" as const, content: systemPrompt }]
+      : []),
     { role: "user" as const, content: question },
   ]
 
@@ -83,11 +92,14 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
         response: {
           model,
           content: fullText,
-          usage: usage ? {
-            promptTokens: usage.inputTokens ?? 0,
-            completionTokens: usage.outputTokens ?? 0,
-            totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-          } : undefined,
+          usage: usage
+            ? {
+                promptTokens: usage.inputTokens ?? 0,
+                completionTokens: usage.outputTokens ?? 0,
+                totalTokens:
+                  (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+              }
+            : undefined,
           durationMs: Date.now() - startTime,
         },
       }
@@ -101,14 +113,19 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
         response: {
           model,
           content: result.text,
-          reasoning: Array.isArray(result.reasoning) && result.reasoning.length > 0
-            ? result.reasoning.map(r => r.text).join("\n")
+          reasoning:
+            Array.isArray(result.reasoning) && result.reasoning.length > 0
+              ? result.reasoning.map((r) => r.text).join("\n")
+              : undefined,
+          usage: result.usage
+            ? {
+                promptTokens: result.usage.inputTokens ?? 0,
+                completionTokens: result.usage.outputTokens ?? 0,
+                totalTokens:
+                  (result.usage.inputTokens ?? 0) +
+                  (result.usage.outputTokens ?? 0),
+              }
             : undefined,
-          usage: result.usage ? {
-            promptTokens: result.usage.inputTokens ?? 0,
-            completionTokens: result.usage.outputTokens ?? 0,
-            totalTokens: (result.usage.inputTokens ?? 0) + (result.usage.outputTokens ?? 0),
-          } : undefined,
           durationMs: Date.now() - startTime,
         },
       }
@@ -131,7 +148,11 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
 export async function ask(
   question: string,
   level: ThinkingLevel = "standard",
-  options: { stream?: boolean; onToken?: (token: string) => void; modelOverride?: string } = {}
+  options: {
+    stream?: boolean
+    onToken?: (token: string) => void
+    modelOverride?: string
+  } = {},
 ): Promise<ModelResponse> {
   // Get model for level, or use override
   let model: Model | undefined
@@ -143,7 +164,7 @@ export async function ask(
   } else {
     const models = getModelsForLevel(level)
     // Find first available model
-    model = models.find(m => isProviderAvailable(m.provider))
+    model = models.find((m) => isProviderAvailable(m.provider))
     if (!model) {
       throw new Error(`No available models for level: ${level}`)
     }
@@ -172,7 +193,7 @@ export interface ResearchCallOptions {
  */
 export async function research(
   topic: string,
-  options: ResearchCallOptions = {}
+  options: ResearchCallOptions = {},
 ): Promise<ModelResponse> {
   const { context } = options
 
@@ -185,8 +206,15 @@ export async function research(
     }
   } else {
     // Prefer deep research models, fall back to strong standard models
-    const deepModels = MODELS.filter(m => m.isDeepResearch && isProviderAvailable(m.provider))
-    const strongModels = MODELS.filter(m => !m.isDeepResearch && m.costTier === "high" && isProviderAvailable(m.provider))
+    const deepModels = MODELS.filter(
+      (m) => m.isDeepResearch && isProviderAvailable(m.provider),
+    )
+    const strongModels = MODELS.filter(
+      (m) =>
+        !m.isDeepResearch &&
+        m.costTier === "high" &&
+        isProviderAvailable(m.provider),
+    )
     model = deepModels[0] || strongModels[0]
     if (!model) {
       throw new Error("No deep research or high-tier models available")
@@ -238,9 +266,9 @@ Please provide:
 export async function compare(
   question: string,
   modelIds: string[],
-  options: { stream?: boolean } = {}
+  options: { stream?: boolean } = {},
 ): Promise<ModelResponse[]> {
-  const models = modelIds.map(id => {
+  const models = modelIds.map((id) => {
     const model = getModel(id)
     if (!model) throw new Error(`Unknown model: ${id}`)
     return model
@@ -248,8 +276,10 @@ export async function compare(
 
   // Query all models in parallel
   const results = await Promise.all(
-    models.map(model => queryModel({ question, model, stream: options.stream }))
+    models.map((model) =>
+      queryModel({ question, model, stream: options.stream }),
+    ),
   )
 
-  return results.map(r => r.response)
+  return results.map((r) => r.response)
 }

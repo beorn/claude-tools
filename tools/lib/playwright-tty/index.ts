@@ -15,7 +15,11 @@
  * ```
  */
 
-export { createTTY, type TtydServer, type TtydServerOptions } from "./ttyd-server.js"
+export {
+  createTTY,
+  type TtydServer,
+  type TtydServerOptions,
+} from "./ttyd-server.js"
 export {
   waitForContent,
   waitForText,

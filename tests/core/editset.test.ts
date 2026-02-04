@@ -111,7 +111,7 @@ describe("saveEditset / loadEditset", () => {
 
   test("throws on missing file", () => {
     expect(() => loadEditset("/nonexistent/path.json")).toThrow(
-      "Editset file not found"
+      "Editset file not found",
     )
   })
 

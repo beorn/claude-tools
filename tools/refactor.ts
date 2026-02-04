@@ -34,8 +34,14 @@ import {
   createBatchRenameProposalFiltered,
   checkConflicts,
 } from "./lib/backends/ts-morph"
-import { findPatterns as astGrepFindPatterns, createPatternReplaceProposal as astGrepReplace } from "./lib/backends/ast-grep"
-import { findPatterns as rgFindPatterns, createPatternReplaceProposal as rgReplace } from "./lib/backends/ripgrep"
+import {
+  findPatterns as astGrepFindPatterns,
+  createPatternReplaceProposal as astGrepReplace,
+} from "./lib/backends/ast-grep"
+import {
+  findPatterns as rgFindPatterns,
+  createPatternReplaceProposal as rgReplace,
+} from "./lib/backends/ripgrep"
 import {
   findLinksToFile,
   createFileRenameEditset,
@@ -89,7 +95,12 @@ function error(message: string): never {
   process.exit(1)
 }
 
-async function getProjectStats(): Promise<{ tsFiles: number; mdFiles: number; hasAstGrep: boolean; hasTsConfig: boolean }> {
+async function getProjectStats(): Promise<{
+  tsFiles: number
+  mdFiles: number
+  hasAstGrep: boolean
+  hasTsConfig: boolean
+}> {
   const fs = await import("fs")
 
   // Count files using Bun's built-in glob
@@ -358,7 +369,9 @@ async function main() {
       const skipNames = getArg("--skip")?.split(",") || []
 
       if (!pattern || !replacement) {
-        error("Usage: rename.batch --pattern <regex> --replace <string> [--output file] [--check-conflicts] [--skip names]")
+        error(
+          "Usage: rename.batch --pattern <regex> --replace <string> [--output file] [--check-conflicts] [--skip names]",
+        )
       }
 
       const regex = new RegExp(pattern, "i")
@@ -372,15 +385,25 @@ async function main() {
 
       // Normal batch rename (with optional skip)
       const symbols = findSymbols(lazyProject(), regex)
-      const skippedCount = skipNames.length > 0 ? symbols.filter((s) => skipNames.includes(s.name)).length : 0
+      const skippedCount =
+        skipNames.length > 0
+          ? symbols.filter((s) => skipNames.includes(s.name)).length
+          : 0
       console.error(`Found ${symbols.length} symbols matching /${pattern}/i`)
       if (skippedCount > 0) {
-        console.error(`Skipping ${skippedCount} symbols: ${skipNames.join(", ")}`)
+        console.error(
+          `Skipping ${skippedCount} symbols: ${skipNames.join(", ")}`,
+        )
       }
 
       const editset =
         skipNames.length > 0
-          ? createBatchRenameProposalFiltered(lazyProject(), regex, replacement, skipNames)
+          ? createBatchRenameProposalFiltered(
+              lazyProject(),
+              regex,
+              replacement,
+              skipNames,
+            )
           : createBatchRenameProposal(lazyProject(), regex, replacement)
       saveEditset(editset, outputFile)
 
@@ -401,7 +424,9 @@ async function main() {
       const outputFile = getArg("--output") || inputFile
 
       if (!inputFile) {
-        error("Usage: editset.select <file> [--include refIds] [--exclude refIds] [--output file]")
+        error(
+          "Usage: editset.select <file> [--include refIds] [--exclude refIds] [--output file]",
+        )
       }
 
       const editset = loadEditset(inputFile!)
@@ -465,7 +490,9 @@ async function main() {
       const stdinContent = Buffer.concat(chunks).toString("utf-8").trim()
 
       if (!stdinContent) {
-        error("No patch provided on stdin. Usage: editset.patch <file> <<'EOF'\n{\"refId\": \"replacement\"}\nEOF")
+        error(
+          'No patch provided on stdin. Usage: editset.patch <file> <<\'EOF\'\n{"refId": "replacement"}\nEOF',
+        )
       }
 
       const editset = loadEditset(inputFile!)
@@ -474,7 +501,9 @@ async function main() {
       saveEditset(patched, outputFile!)
 
       const selectedCount = patched.refs.filter((r) => r.selected).length
-      const skippedCount = patched.refs.filter((r) => !r.selected || r.replace === null).length
+      const skippedCount = patched.refs.filter(
+        (r) => !r.selected || r.replace === null,
+      ).length
       output({
         editsetPath: outputFile,
         patchedRefs: Object.keys(patch).length,
@@ -491,7 +520,9 @@ async function main() {
       const backendName = getArg("--backend")
 
       if (!pattern) {
-        error("Usage: pattern.find --pattern <pattern> [--glob <glob>] [--backend ast-grep|ripgrep]")
+        error(
+          "Usage: pattern.find --pattern <pattern> [--glob <glob>] [--backend ast-grep|ripgrep]",
+        )
       }
 
       // Choose backend
@@ -522,7 +553,9 @@ async function main() {
       const outputFile = getArg("--output") || "editset.json"
 
       if (!pattern || !replacement) {
-        error("Usage: pattern.replace --pattern <pattern> --replace <replacement> [--glob <glob>] [--backend ast-grep|ripgrep] [--output file]")
+        error(
+          "Usage: pattern.replace --pattern <pattern> --replace <replacement> [--glob <glob>] [--backend ast-grep|ripgrep] [--output file]",
+        )
       }
 
       // Choose backend
@@ -545,7 +578,8 @@ async function main() {
         editsetPath: outputFile,
         refCount: editset.refs.length,
         fileCount: new Set(editset.refs.map((r) => r.file)).size,
-        backend: backendName || (pattern.includes("$") ? "ast-grep" : "ripgrep"),
+        backend:
+          backendName || (pattern.includes("$") ? "ast-grep" : "ripgrep"),
       })
       break
     }
@@ -566,7 +600,7 @@ async function main() {
             createRenameProposal: !!b.createRenameProposal,
             createBatchRenameProposal: !!b.createBatchRenameProposal,
           },
-        }))
+        })),
       )
       break
     }
@@ -600,7 +634,9 @@ async function main() {
       const outputFile = getArg("--output") || "wikilink-editset.json"
 
       if (!oldPath || !newPath) {
-        error("Usage: wikilink.rename --old <path> --new <path> [--output <file>]")
+        error(
+          "Usage: wikilink.rename --old <path> --new <path> [--output <file>]",
+        )
       }
 
       const editset = createFileRenameEditset(oldPath, newPath, ".")
@@ -660,7 +696,9 @@ async function main() {
       const outputFile = getArg("--output") || "package-editset.json"
 
       if (!oldPath || !newPath) {
-        error("Usage: package.rename --old <path> --new <path> [--output <file>]")
+        error(
+          "Usage: package.rename --old <path> --new <path> [--output <file>]",
+        )
       }
 
       const editset = createPackageJsonEditset(oldPath, newPath, ".")
@@ -717,7 +755,9 @@ async function main() {
       const outputFile = getArg("--output") || "tsconfig-editset.json"
 
       if (!oldPath || !newPath) {
-        error("Usage: tsconfig.rename --old <path> --new <path> [--output <file>]")
+        error(
+          "Usage: tsconfig.rename --old <path> --new <path> [--output <file>]",
+        )
       }
 
       const editset = createTsConfigEditset(oldPath, newPath, ".")
@@ -739,7 +779,9 @@ async function main() {
       const glob = getArg("--glob") || "**/*.{ts,tsx,js,jsx}"
 
       if (!pattern || !replacement) {
-        error("Usage: file.find --pattern <string> --replace <string> [--glob <glob>]")
+        error(
+          "Usage: file.find --pattern <string> --replace <string> [--glob <glob>]",
+        )
       }
 
       const fileOps = await findFilesToRename(pattern, replacement, glob)
@@ -764,7 +806,9 @@ async function main() {
       const checkConflictsFlag = hasFlag("--check-conflicts")
 
       if (!pattern || !replacement) {
-        error("Usage: file.rename --pattern <string> --replace <string> [--glob <glob>] [--output file] [--check-conflicts]")
+        error(
+          "Usage: file.rename --pattern <string> --replace <string> [--glob <glob>] [--output file] [--check-conflicts]",
+        )
       }
 
       // Find files to rename
@@ -780,7 +824,10 @@ async function main() {
         const report = checkFileConflicts(fileOps)
         output({
           conflicts: report.conflicts,
-          safe: report.safe.map((op) => ({ oldPath: op.oldPath, newPath: op.newPath })),
+          safe: report.safe.map((op) => ({
+            oldPath: op.oldPath,
+            newPath: op.newPath,
+          })),
           conflictCount: report.conflicts.length,
           safeCount: report.safe.length,
         })
@@ -795,7 +842,10 @@ async function main() {
         editsetPath: outputFile,
         fileCount: editset.fileOps.length,
         importEditCount: editset.importEdits.length,
-        files: editset.fileOps.map((op) => ({ oldPath: op.oldPath, newPath: op.newPath })),
+        files: editset.fileOps.map((op) => ({
+          oldPath: op.oldPath,
+          newPath: op.newPath,
+        })),
       })
       break
     }
@@ -850,7 +900,9 @@ async function main() {
       const outputDir = getArg("--output") || ".editsets"
 
       if (!from || !to) {
-        error("Usage: migrate --from <pattern> --to <replacement> [--glob <glob>] [--dry-run] [--output <dir>]")
+        error(
+          "Usage: migrate --from <pattern> --to <replacement> [--glob <glob>] [--dry-run] [--output <dir>]",
+        )
       }
 
       // Ensure output directory exists
@@ -882,7 +934,9 @@ async function main() {
           editsetPath: fileEditsetPath,
           count: fileEditset.fileOps.length,
           files: fileEditset.fileOps.length,
-          details: fileEditset.fileOps.map((op) => `${op.oldPath} → ${op.newPath}`),
+          details: fileEditset.fileOps.map(
+            (op) => `${op.oldPath} → ${op.newPath}`,
+          ),
         })
         console.error(`  Found ${fileEditset.fileOps.length} files to rename`)
       } else {
@@ -895,7 +949,11 @@ async function main() {
       const symbolRegex = new RegExp(from, "i")
       const symbols = findSymbols(lazyProject(), symbolRegex)
       if (symbols.length > 0) {
-        const symbolEditset = createBatchRenameProposal(lazyProject(), symbolRegex, to)
+        const symbolEditset = createBatchRenameProposal(
+          lazyProject(),
+          symbolRegex,
+          to,
+        )
         const symbolEditsetPath = path.join(outputDir, "02-symbol-renames.json")
         saveEditset(symbolEditset, symbolEditsetPath)
         results.push({
@@ -904,7 +962,9 @@ async function main() {
           count: symbolEditset.refs.length,
           files: new Set(symbolEditset.refs.map((r) => r.file)).size,
         })
-        console.error(`  Found ${symbols.length} symbols, ${symbolEditset.refs.length} references across ${new Set(symbolEditset.refs.map((r) => r.file)).size} files`)
+        console.error(
+          `  Found ${symbols.length} symbols, ${symbolEditset.refs.length} references across ${new Set(symbolEditset.refs.map((r) => r.file)).size} files`,
+        )
       } else {
         results.push({ phase: "symbol-renames", count: 0, files: 0 })
         console.error("  No symbols to rename")
@@ -923,7 +983,9 @@ async function main() {
           count: textEditset.refs.length,
           files: new Set(textEditset.refs.map((r) => r.file)).size,
         })
-        console.error(`  Found ${textEditset.refs.length} text matches across ${new Set(textEditset.refs.map((r) => r.file)).size} files`)
+        console.error(
+          `  Found ${textEditset.refs.length} text matches across ${new Set(textEditset.refs.map((r) => r.file)).size} files`,
+        )
       } else {
         results.push({ phase: "text-patterns", count: 0, files: 0 })
         console.error("  No text patterns to replace")
@@ -935,7 +997,9 @@ async function main() {
       console.error("\n=== Summary ===")
       for (const r of results) {
         if (r.editsetPath) {
-          console.error(`  ${r.phase}: ${r.count} edits in ${r.files} files → ${r.editsetPath}`)
+          console.error(
+            `  ${r.phase}: ${r.count} edits in ${r.files} files → ${r.editsetPath}`,
+          )
         } else {
           console.error(`  ${r.phase}: no changes`)
         }
@@ -958,7 +1022,12 @@ async function main() {
         console.error("\nApplying changes...")
 
         // Apply in order: files first (to update paths), then symbols, then text
-        const applyResults: { phase: string; applied: number; skipped: number; errors: string[] }[] = []
+        const applyResults: {
+          phase: string
+          applied: number
+          skipped: number
+          errors: string[]
+        }[] = []
 
         // Apply file renames
         const fileResult = results.find((r) => r.phase === "file-renames")
@@ -966,8 +1035,15 @@ async function main() {
           console.error("\n  Applying file renames...")
           const fileEditset = loadFileEditset(fileResult.editsetPath)
           const result = applyFileRenames(fileEditset, false)
-          applyResults.push({ phase: "file-renames", applied: result.applied, skipped: result.skipped, errors: result.errors })
-          console.error(`    Applied: ${result.applied}, Skipped: ${result.skipped}`)
+          applyResults.push({
+            phase: "file-renames",
+            applied: result.applied,
+            skipped: result.skipped,
+            errors: result.errors,
+          })
+          console.error(
+            `    Applied: ${result.applied}, Skipped: ${result.skipped}`,
+          )
         }
 
         // Apply symbol renames
@@ -976,8 +1052,15 @@ async function main() {
           console.error("\n  Applying symbol renames...")
           const symbolEditset = loadEditset(symbolResult.editsetPath)
           const result = applyEditset(symbolEditset, false)
-          applyResults.push({ phase: "symbol-renames", applied: result.applied, skipped: result.skipped, errors: [] })
-          console.error(`    Applied: ${result.applied}, Skipped: ${result.skipped}`)
+          applyResults.push({
+            phase: "symbol-renames",
+            applied: result.applied,
+            skipped: result.skipped,
+            errors: [],
+          })
+          console.error(
+            `    Applied: ${result.applied}, Skipped: ${result.skipped}`,
+          )
         }
 
         // Apply text patterns
@@ -986,8 +1069,15 @@ async function main() {
           console.error("\n  Applying text patterns...")
           const textEditset = loadEditset(textResult.editsetPath)
           const result = applyEditset(textEditset, false)
-          applyResults.push({ phase: "text-patterns", applied: result.applied, skipped: result.skipped, errors: [] })
-          console.error(`    Applied: ${result.applied}, Skipped: ${result.skipped}`)
+          applyResults.push({
+            phase: "text-patterns",
+            applied: result.applied,
+            skipped: result.skipped,
+            errors: [],
+          })
+          console.error(
+            `    Applied: ${result.applied}, Skipped: ${result.skipped}`,
+          )
         }
 
         console.error("\n=== Migration Complete ===")
@@ -1020,7 +1110,9 @@ async function main() {
       const dryRun = hasFlag("--dry-run")
 
       if (!patternsArg) {
-        error("Usage: pattern.migrate --patterns <p1,p2,...> --prompt <text> [--glob <glob>] [--output <file>]")
+        error(
+          "Usage: pattern.migrate --patterns <p1,p2,...> --prompt <text> [--glob <glob>] [--output <file>]",
+        )
       }
       if (!prompt) {
         error("--prompt is required: migration instructions for the LLM")
@@ -1039,7 +1131,9 @@ async function main() {
       }
 
       const fileSummary = summarizeMatches(matches)
-      console.error(`Found ${matches.length} matches in ${fileSummary.size} files:`)
+      console.error(
+        `Found ${matches.length} matches in ${fileSummary.size} files:`,
+      )
       for (const [file, count] of fileSummary.entries()) {
         console.error(`  ${file}: ${count} matches`)
       }
@@ -1074,13 +1168,16 @@ async function main() {
       } else {
         const result = getBestAvailableModel("default", isProviderAvailable)
         model = result.model
-        if (!model) error("No LLM model available. Set OPENAI_API_KEY or similar.")
+        if (!model)
+          error("No LLM model available. Set OPENAI_API_KEY or similar.")
         if (result.warning) console.error(`⚠️  ${result.warning}`)
       }
 
       // 4. Send to LLM
       const llmPrompt = buildMigrationPrompt(matches, prompt)
-      console.error(`\nSending ${matches.length} matches to ${model.displayName}...`)
+      console.error(
+        `\nSending ${matches.length} matches to ${model.displayName}...`,
+      )
 
       const response = await ask(llmPrompt, "standard", {
         modelOverride: model.modelId,
@@ -1099,18 +1196,24 @@ async function main() {
       } catch (e) {
         console.error("\n--- Raw LLM response ---")
         console.error(response.content)
-        error(`Failed to parse LLM response: ${e instanceof Error ? e.message : String(e)}`)
+        error(
+          `Failed to parse LLM response: ${e instanceof Error ? e.message : String(e)}`,
+        )
       }
 
       const activeReplacements = replacements.filter((r) => r.new !== null)
-      console.error(`LLM proposed ${activeReplacements.length} replacements (${replacements.length - activeReplacements.length} skipped)`)
+      console.error(
+        `LLM proposed ${activeReplacements.length} replacements (${replacements.length - activeReplacements.length} skipped)`,
+      )
 
       // 6. Create editset
       const editset = migrateCreateEditset(matches, replacements)
       saveEditset(editset, outputFile)
 
       console.error(`\nSaved editset to ${outputFile}`)
-      console.error(`Apply with: bun tools/refactor.ts editset.apply ${outputFile}`)
+      console.error(
+        `Apply with: bun tools/refactor.ts editset.apply ${outputFile}`,
+      )
 
       output({
         editsetPath: outputFile,

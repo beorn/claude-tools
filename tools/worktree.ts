@@ -98,7 +98,11 @@ export async function getWorktrees(
   const result = await $`cd ${gitRoot} && git worktree list --porcelain`.quiet()
   const lines = result.stdout.toString().split("\n")
 
-  const worktrees: Array<{ path: string; branch: string; isDetached: boolean }> = []
+  const worktrees: Array<{
+    path: string
+    branch: string
+    isDetached: boolean
+  }> = []
   let currentPath = ""
   let currentBranch = ""
   let isDetached = false
@@ -161,7 +165,12 @@ export async function createWorktree(
   branch?: string,
   options: CreateOptions = {},
 ): Promise<void> {
-  const { install = true, direnv = true, hooks = true, allowDirty = false } = options
+  const {
+    install = true,
+    direnv = true,
+    hooks = true,
+    allowDirty = false,
+  } = options
 
   const gitRoot = findGitRoot(process.cwd())
   if (!gitRoot) {
@@ -191,12 +200,16 @@ export async function createWorktree(
     // Check main repo
     const mainStatus = await getWorktreeStatus(gitRoot)
     if (mainStatus.dirty) {
-      issues.push(`Main repo has ${mainStatus.changes.length} uncommitted change(s)`)
+      issues.push(
+        `Main repo has ${mainStatus.changes.length} uncommitted change(s)`,
+      )
       for (const change of mainStatus.changes.slice(0, 3)) {
         issues.push(DIM + `    ${change}` + RESET)
       }
       if (mainStatus.changes.length > 3) {
-        issues.push(DIM + `    ... and ${mainStatus.changes.length - 3} more` + RESET)
+        issues.push(
+          DIM + `    ... and ${mainStatus.changes.length - 3} more` + RESET,
+        )
       }
     }
 
@@ -207,7 +220,9 @@ export async function createWorktree(
 
       const subStatus = await getWorktreeStatus(subPath)
       if (subStatus.dirty) {
-        issues.push(`Submodule ${submodule} has ${subStatus.changes.length} uncommitted change(s)`)
+        issues.push(
+          `Submodule ${submodule} has ${subStatus.changes.length} uncommitted change(s)`,
+        )
       }
     }
 
@@ -218,13 +233,19 @@ export async function createWorktree(
         console.log(YELLOW + "  " + issue + RESET)
       }
       console.log("")
-      console.log("The new worktree would not include these uncommitted changes,")
+      console.log(
+        "The new worktree would not include these uncommitted changes,",
+      )
       console.log("which could lead to confusion about what code is where.")
       console.log("")
       console.log("Options:")
       console.log(CYAN + "  1. Commit your changes first" + RESET)
       console.log(CYAN + "  2. Stash your changes: git stash" + RESET)
-      console.log(CYAN + "  3. Use --allow-dirty to create anyway (not recommended)" + RESET)
+      console.log(
+        CYAN +
+          "  3. Use --allow-dirty to create anyway (not recommended)" +
+          RESET,
+      )
       process.exit(1)
     }
     success("Working tree is clean")
@@ -238,10 +259,14 @@ export async function createWorktree(
     const subPath = join(gitRoot, submodule)
     if (!existsSync(join(subPath, ".git"))) continue
 
-    const lsTree = await $`cd ${gitRoot} && git ls-tree HEAD ${submodule}`.quiet()
+    const lsTree =
+      await $`cd ${gitRoot} && git ls-tree HEAD ${submodule}`.quiet()
     const expectedCommit = lsTree.stdout.toString().split(/\s+/)[2]
 
-    if (expectedCommit && !(await commitExistsOnRemote(subPath, expectedCommit))) {
+    if (
+      expectedCommit &&
+      !(await commitExistsOnRemote(subPath, expectedCommit))
+    ) {
       unpushed.push(`  - ${submodule} (${expectedCommit.slice(0, 8)})`)
     }
   }
@@ -253,14 +278,16 @@ export async function createWorktree(
     }
     console.log("")
     console.log("Push submodules first:")
-    console.log(CYAN + '  git submodule foreach "git push origin HEAD || true"' + RESET)
+    console.log(
+      CYAN + '  git submodule foreach "git push origin HEAD || true"' + RESET,
+    )
     process.exit(1)
   }
   success("Submodules OK")
 
   // Warn about existing worktrees
   const existingWorktrees = await getWorktrees(gitRoot)
-  const otherWorktrees = existingWorktrees.filter(wt => wt.path !== gitRoot)
+  const otherWorktrees = existingWorktrees.filter((wt) => wt.path !== gitRoot)
   if (otherWorktrees.length > 0) {
     console.log("")
     warn(`${otherWorktrees.length} existing worktree(s):`)
@@ -270,13 +297,20 @@ export async function createWorktree(
         $`cd ${wt.path} && git rev-list HEAD..main --count 2>/dev/null`,
       )
       const behind = parseInt(behindResult.stdout.trim(), 10) || 0
-      const behindStr = behind > 0
-        ? YELLOW + `(${behind} behind main)` + RESET
-        : GREEN + "(up to date)" + RESET
-      console.log(`  ${wtName.padEnd(22)} ${DIM}${wt.branch.padEnd(22)}${RESET} ${behindStr}`)
+      const behindStr =
+        behind > 0
+          ? YELLOW + `(${behind} behind main)` + RESET
+          : GREEN + "(up to date)" + RESET
+      console.log(
+        `  ${wtName.padEnd(22)} ${DIM}${wt.branch.padEnd(22)}${RESET} ${behindStr}`,
+      )
     }
     console.log("")
-    console.log(DIM + `  Consider cleaning up stale worktrees with: bun worktree remove <name>` + RESET)
+    console.log(
+      DIM +
+        `  Consider cleaning up stale worktrees with: bun worktree remove <name>` +
+        RESET,
+    )
     console.log("")
   }
 
@@ -330,8 +364,9 @@ export async function createWorktree(
 
   // Run package manager install
   if (install) {
-    const hasBunLockb = existsSync(join(worktreePath, "bun.lockb")) ||
-                        existsSync(join(worktreePath, "bun.lock"))
+    const hasBunLockb =
+      existsSync(join(worktreePath, "bun.lockb")) ||
+      existsSync(join(worktreePath, "bun.lock"))
     const hasPackageJson = existsSync(join(worktreePath, "package.json"))
 
     if (hasPackageJson) {
@@ -358,7 +393,9 @@ export async function createWorktree(
   // Allow direnv
   if (direnv && existsSync(join(worktreePath, ".envrc"))) {
     info("Allowing direnv...")
-    const direnvResult = await safeExec($`direnv allow ${worktreePath} 2>/dev/null`)
+    const direnvResult = await safeExec(
+      $`direnv allow ${worktreePath} 2>/dev/null`,
+    )
     if (direnvResult.exitCode === 0) {
       success("Direnv allowed")
     } else {
@@ -369,7 +406,9 @@ export async function createWorktree(
   // Run prepare script for hooks
   if (hooks && existsSync(join(worktreePath, "package.json"))) {
     try {
-      const pkg = (await Bun.file(join(worktreePath, "package.json")).json()) as {
+      const pkg = (await Bun.file(
+        join(worktreePath, "package.json"),
+      ).json()) as {
         scripts?: { prepare?: string }
       }
       if (pkg.scripts?.prepare) {
@@ -422,7 +461,8 @@ export async function removeWorktree(
   }
 
   // Get branch name before removing
-  const branchResult = await $`cd ${worktreePath} && git branch --show-current`.quiet()
+  const branchResult =
+    await $`cd ${worktreePath} && git branch --show-current`.quiet()
   const branchName = branchResult.stdout.toString().trim()
 
   // Check for uncommitted changes
@@ -434,7 +474,9 @@ export async function removeWorktree(
         console.log(DIM + `  ${change}` + RESET)
       }
       if (status.changes.length > 10) {
-        console.log(DIM + `  ... and ${status.changes.length - 10} more` + RESET)
+        console.log(
+          DIM + `  ... and ${status.changes.length - 10} more` + RESET,
+        )
       }
       console.log(DIM + "Use --force to remove anyway" + RESET)
       process.exit(1)
@@ -475,7 +517,9 @@ export async function removeWorktree(
       warn(`Not deleting protected branch: ${branchName}`)
     } else {
       info(`Deleting branch: ${branchName}`)
-      await safeExec($`cd ${gitRoot} && git branch -D ${branchName} 2>/dev/null`)
+      await safeExec(
+        $`cd ${gitRoot} && git branch -D ${branchName} 2>/dev/null`,
+      )
       success("Branch deleted")
     }
   }
@@ -504,7 +548,8 @@ export async function mergeWorktree(
   const worktreePath = join(dirname(gitRoot), `${repoName}-${name}`)
 
   // Validate we're on the main worktree
-  const currentBranchResult = await $`cd ${gitRoot} && git branch --show-current`.quiet()
+  const currentBranchResult =
+    await $`cd ${gitRoot} && git branch --show-current`.quiet()
   const currentBranch = currentBranchResult.stdout.toString().trim()
   if (currentBranch !== "main" && currentBranch !== "master") {
     error(`Must be on main branch to merge (currently on ${currentBranch})`)
@@ -525,14 +570,17 @@ export async function mergeWorktree(
   }
 
   // Get the worktree's branch
-  const branchResult = await $`cd ${worktreePath} && git branch --show-current`.quiet()
+  const branchResult =
+    await $`cd ${worktreePath} && git branch --show-current`.quiet()
   const branchName = branchResult.stdout.toString().trim()
   if (!branchName) {
     error("Worktree has no branch (detached HEAD)")
     process.exit(1)
   }
 
-  info(`Merging ${BOLD}${branchName}${RESET} into ${BOLD}${currentBranch}${RESET}`)
+  info(
+    `Merging ${BOLD}${branchName}${RESET} into ${BOLD}${currentBranch}${RESET}`,
+  )
 
   // Check worktree has no uncommitted changes
   const status = await getWorktreeStatus(worktreePath)
@@ -546,7 +594,9 @@ export async function mergeWorktree(
     }
     console.log("")
     console.log("Commit or stash changes in the worktree first:")
-    console.log(CYAN + `  cd ${worktreePath} && git add . && git commit -m "WIP"` + RESET)
+    console.log(
+      CYAN + `  cd ${worktreePath} && git add . && git commit -m "WIP"` + RESET,
+    )
     process.exit(1)
   }
   success("Worktree is clean")
@@ -583,9 +633,7 @@ export async function mergeWorktree(
   success("Merged successfully")
 
   // Show merge summary
-  const logResult = await safeExec(
-    $`cd ${gitRoot} && git log --oneline -5`,
-  )
+  const logResult = await safeExec($`cd ${gitRoot} && git log --oneline -5`)
   console.log("")
   console.log(DIM + logResult.stdout.trim() + RESET)
   console.log("")
@@ -604,7 +652,9 @@ export async function mergeWorktree(
 
   // Remove worktree
   info("Removing worktree...")
-  await safeExec($`cd ${gitRoot} && git worktree remove ${worktreePath} --force`)
+  await safeExec(
+    $`cd ${gitRoot} && git worktree remove ${worktreePath} --force`,
+  )
   await $`cd ${gitRoot} && git worktree prune`.quiet()
   success("Worktree removed")
 
@@ -614,7 +664,9 @@ export async function mergeWorktree(
       warn(`Not deleting protected branch: ${branchName}`)
     } else {
       info(`Deleting branch: ${branchName}`)
-      await safeExec($`cd ${gitRoot} && git branch -d ${branchName} 2>/dev/null`)
+      await safeExec(
+        $`cd ${gitRoot} && git branch -d ${branchName} 2>/dev/null`,
+      )
       success("Branch deleted")
     }
   }
@@ -681,7 +733,9 @@ export async function listWorktrees(detailed = false): Promise<void> {
           console.log(DIM + `    ${change}` + RESET)
         }
         if (status.changes.length > 5) {
-          console.log(DIM + `    ... and ${status.changes.length - 5} more` + RESET)
+          console.log(
+            DIM + `    ... and ${status.changes.length - 5} more` + RESET,
+          )
         }
       }
       console.log("")
@@ -708,7 +762,11 @@ export async function showDefaultInfo(): Promise<void> {
   console.log(CYAN + BOLD + "Git Worktrees" + RESET)
   console.log(DIM + `Repository: ${repoName}` + RESET)
   if (submodules.length > 0) {
-    console.log(DIM + `Submodules: ${submodules.length} (${submodules.slice(0, 3).join(", ")}${submodules.length > 3 ? "..." : ""})` + RESET)
+    console.log(
+      DIM +
+        `Submodules: ${submodules.length} (${submodules.slice(0, 3).join(", ")}${submodules.length > 3 ? "..." : ""})` +
+        RESET,
+    )
   }
   console.log("")
 
@@ -724,7 +782,8 @@ export async function showDefaultInfo(): Promise<void> {
     if (!wt) continue
     const name = basename(wt.path)
     const isMain = wt.path === gitRoot
-    const isCurrent = wt.path === currentDir || currentDir.startsWith(wt.path + "/")
+    const isCurrent =
+      wt.path === currentDir || currentDir.startsWith(wt.path + "/")
     const isLast = i === worktrees.length - 1
 
     // Check for changes
@@ -765,29 +824,61 @@ export async function showDefaultInfo(): Promise<void> {
   console.log("")
   console.log(BOLD + "Why this tool?" + RESET)
   console.log(DIM + "  Bare 'git worktree add' doesn't handle:" + RESET)
-  console.log(DIM + "  • Submodules (need independent clones, not symlinks)" + RESET)
+  console.log(
+    DIM + "  • Submodules (need independent clones, not symlinks)" + RESET,
+  )
   console.log(DIM + "  • Dependencies (bun install / npm install)" + RESET)
-  console.log(DIM + "  • Hooks (git hooks need reinstalling per worktree)" + RESET)
+  console.log(
+    DIM + "  • Hooks (git hooks need reinstalling per worktree)" + RESET,
+  )
   console.log(DIM + "  • Direnv (needs 'direnv allow' per worktree)" + RESET)
-  console.log(DIM + "  • Validation (uncommitted changes, unpushed submodules)" + RESET)
+  console.log(
+    DIM + "  • Validation (uncommitted changes, unpushed submodules)" + RESET,
+  )
 
   console.log("")
   console.log(BOLD + "Commands" + RESET)
   console.log(CYAN + "  bun worktree create <name>" + RESET)
-  console.log(DIM + `     Create worktree at ../${repoName}-<name> on branch feat/<name>` + RESET)
-  console.log(DIM + `     Example: bun worktree create bugfix  →  ../${repoName}-bugfix` + RESET)
+  console.log(
+    DIM +
+      `     Create worktree at ../${repoName}-<name> on branch feat/<name>` +
+      RESET,
+  )
+  console.log(
+    DIM +
+      `     Example: bun worktree create bugfix  →  ../${repoName}-bugfix` +
+      RESET,
+  )
   console.log("")
   console.log(CYAN + "  bun worktree create <name> <branch>" + RESET)
   console.log(DIM + "     Create worktree on specific branch" + RESET)
-  console.log(DIM + "     Example: bun worktree create test main  →  track main branch" + RESET)
+  console.log(
+    DIM +
+      "     Example: bun worktree create test main  →  track main branch" +
+      RESET,
+  )
   console.log("")
   console.log(CYAN + "  bun worktree merge <name>" + RESET)
-  console.log(DIM + "     Merge worktree branch into main, run tests, remove worktree" + RESET)
-  console.log(DIM + "     Use --keep-branch to keep branch, --full-tests for test:all" + RESET)
+  console.log(
+    DIM +
+      "     Merge worktree branch into main, run tests, remove worktree" +
+      RESET,
+  )
+  console.log(
+    DIM +
+      "     Use --keep-branch to keep branch, --full-tests for test:all" +
+      RESET,
+  )
   console.log("")
   console.log(CYAN + "  bun worktree remove <name>" + RESET)
-  console.log(DIM + "     Remove worktree (checks for uncommitted changes)" + RESET)
-  console.log(DIM + "     Use --force to skip checks, --delete-branch to also delete branch" + RESET)
+  console.log(
+    DIM + "     Remove worktree (checks for uncommitted changes)" + RESET,
+  )
+  console.log(
+    DIM +
+      "     Use --force to skip checks, --delete-branch to also delete branch" +
+      RESET,
+  )
   console.log("")
   console.log(CYAN + "  bun worktree list" + RESET)
   console.log(DIM + "     Show detailed status including file changes" + RESET)
@@ -795,16 +886,34 @@ export async function showDefaultInfo(): Promise<void> {
   if (submodules.length > 0) {
     console.log("")
     console.log(BOLD + "Submodule handling" + RESET)
-    console.log(DIM + "  Worktrees are created from the COMMITTED state, not working tree." + RESET)
-    console.log(DIM + "  This ensures each worktree is an exact, reproducible copy." + RESET)
+    console.log(
+      DIM +
+        "  Worktrees are created from the COMMITTED state, not working tree." +
+        RESET,
+    )
+    console.log(
+      DIM +
+        "  This ensures each worktree is an exact, reproducible copy." +
+        RESET,
+    )
     console.log("")
     console.log(DIM + "  Before creating:" + RESET)
     console.log(DIM + "  • Fails if main repo has uncommitted changes" + RESET)
-    console.log(DIM + "  • Fails if any submodule has uncommitted changes" + RESET)
-    console.log(DIM + "  • Fails if submodule commits aren't pushed to remote" + RESET)
+    console.log(
+      DIM + "  • Fails if any submodule has uncommitted changes" + RESET,
+    )
+    console.log(
+      DIM + "  • Fails if submodule commits aren't pushed to remote" + RESET,
+    )
     console.log("")
-    console.log(DIM + "  Each worktree gets independent submodule clones (not symlinks)," + RESET)
-    console.log(DIM + "  so changes in one worktree don't affect others." + RESET)
+    console.log(
+      DIM +
+        "  Each worktree gets independent submodule clones (not symlinks)," +
+        RESET,
+    )
+    console.log(
+      DIM + "  so changes in one worktree don't affect others." + RESET,
+    )
   }
 }
 
@@ -870,7 +979,9 @@ ${BOLD}POST-CREATE SETUP${RESET}
 // Main CLI
 // ============================================
 
-export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
+export async function main(
+  argv: string[] = process.argv.slice(2),
+): Promise<void> {
   const args = argv
   const command = args[0]
 
@@ -886,7 +997,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         process.exit(1)
       }
       // Branch is the first non-flag argument after name
-      const branch = args.slice(2).find(a => !a.startsWith("--"))
+      const branch = args.slice(2).find((a) => !a.startsWith("--"))
       await createWorktree(name, branch, {
         install: !hasFlag("--no-install"),
         direnv: !hasFlag("--no-direnv"),

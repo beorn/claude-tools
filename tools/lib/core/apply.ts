@@ -17,7 +17,7 @@ export function computeRefId(
   startLine: number,
   startCol: number,
   endLine: number,
-  endCol: number
+  endCol: number,
 ): string {
   const input = `${file}:${startLine}:${startCol}:${endLine}:${endCol}`
   return createHash("sha256").update(input).digest("hex").slice(0, 8)
@@ -108,7 +108,10 @@ export function applyEditset(editset: Editset, dryRun = false): ApplyOutput {
 /**
  * Verify an editset can be applied without drift
  */
-export function verifyEditset(editset: Editset): { valid: boolean; issues: string[] } {
+export function verifyEditset(editset: Editset): {
+  valid: boolean
+  issues: string[]
+} {
   const issues: string[] = []
 
   // Check all files exist and checksums match
@@ -127,7 +130,9 @@ export function verifyEditset(editset: Editset): { valid: boolean; issues: strin
     const checksum = computeChecksum(content)
 
     if (checksum !== ref.checksum) {
-      issues.push(`Checksum mismatch for ${ref.file}: expected ${ref.checksum}, got ${checksum}`)
+      issues.push(
+        `Checksum mismatch for ${ref.file}: expected ${ref.checksum}, got ${checksum}`,
+      )
     }
   }
 

@@ -8,7 +8,14 @@ import { Database } from "bun:sqlite"
 import * as path from "path"
 import * as os from "os"
 import * as fs from "fs"
-import type { SessionRecord, MessageRecord, WriteRecord, SessionIndexEntry, ContentType, ContentRecord } from "./types"
+import type {
+  SessionRecord,
+  MessageRecord,
+  WriteRecord,
+  SessionIndexEntry,
+  ContentType,
+  ContentRecord,
+} from "./types"
 
 export const CLAUDE_DIR = path.join(os.homedir(), ".claude")
 export const DB_PATH = path.join(CLAUDE_DIR, "session-index.db")
@@ -207,19 +214,41 @@ export function upsertSession(
       updated_at = excluded.updated_at,
       message_count = excluded.message_count,
       title = COALESCE(excluded.title, sessions.title)
-  `).run(id, projectPath, jsonlPath, createdAt, updatedAt, messageCount, title ?? null)
+  `).run(
+    id,
+    projectPath,
+    jsonlPath,
+    createdAt,
+    updatedAt,
+    messageCount,
+    title ?? null,
+  )
 }
 
-export function updateSessionTitle(db: Database, id: string, title: string | null): void {
+export function updateSessionTitle(
+  db: Database,
+  id: string,
+  title: string | null,
+): void {
   db.prepare("UPDATE sessions SET title = ? WHERE id = ?").run(title, id)
 }
 
-export function getSession(db: Database, id: string): SessionRecord | undefined {
-  return db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as SessionRecord | undefined
+export function getSession(
+  db: Database,
+  id: string,
+): SessionRecord | undefined {
+  return db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as
+    | SessionRecord
+    | undefined
 }
 
-export function getSessionByPath(db: Database, jsonlPath: string): SessionRecord | undefined {
-  return db.prepare("SELECT * FROM sessions WHERE jsonl_path = ?").get(jsonlPath) as SessionRecord | undefined
+export function getSessionByPath(
+  db: Database,
+  jsonlPath: string,
+): SessionRecord | undefined {
+  return db
+    .prepare("SELECT * FROM sessions WHERE jsonl_path = ?")
+    .get(jsonlPath) as SessionRecord | undefined
 }
 
 // Message operations
@@ -233,15 +262,19 @@ export function insertMessage(
   filePaths: string | null,
   timestamp: number,
 ): number {
-  const result = db.prepare(`
+  const result = db
+    .prepare(`
     INSERT INTO messages (uuid, session_id, type, content, tool_name, file_paths, timestamp)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(uuid, sessionId, type, content, toolName, filePaths, timestamp)
+  `)
+    .run(uuid, sessionId, type, content, toolName, filePaths, timestamp)
   return Number(result.lastInsertRowid)
 }
 
 export function getMessageCount(db: Database, sessionId: string): number {
-  const row = db.prepare("SELECT COUNT(*) as count FROM messages WHERE session_id = ?").get(sessionId) as { count: number }
+  const row = db
+    .prepare("SELECT COUNT(*) as count FROM messages WHERE session_id = ?")
+    .get(sessionId) as { count: number }
   return row.count
 }
 
@@ -260,7 +293,16 @@ export function insertWrite(
   db.prepare(`
     INSERT INTO writes (session_id, session_file, tool_use_id, timestamp, file_path, content_hash, content_size, content)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(sessionId, sessionFile, toolUseId, timestamp, filePath, contentHash, contentSize, content)
+  `).run(
+    sessionId,
+    sessionFile,
+    toolUseId,
+    timestamp,
+    filePath,
+    contentHash,
+    contentSize,
+    content,
+  )
 }
 
 // FTS operations
@@ -301,7 +343,9 @@ export function ftsSearch(
   searchQuery += ` ORDER BY rank LIMIT ? OFFSET ?`
 
   const totalRow = db.prepare(countQuery).get(...params) as { total: number }
-  const results = db.prepare(searchQuery).all(...params, limit, offset) as MessageRecord[]
+  const results = db
+    .prepare(searchQuery)
+    .all(...params, limit, offset) as MessageRecord[]
 
   return { results, total: totalRow.total }
 }
@@ -310,19 +354,34 @@ export interface MessageSearchOptions {
   limit?: number
   offset?: number
   projectFilter?: string
-  projectGlob?: string  // Glob pattern for project matching
-  sinceTime?: number    // Filter messages after this timestamp
-  messageType?: "user" | "assistant"  // Filter by message type
-  toolName?: string     // Filter by tool name
-  sessionId?: string    // Filter by session ID
+  projectGlob?: string // Glob pattern for project matching
+  sinceTime?: number // Filter messages after this timestamp
+  messageType?: "user" | "assistant" // Filter by message type
+  toolName?: string // Filter by tool name
+  sessionId?: string // Filter by session ID
 }
 
 export function ftsSearchWithSnippet(
   db: Database,
   query: string,
   options: MessageSearchOptions = {},
-): { results: (MessageRecord & { snippet: string; project_path: string; rank: number })[]; total: number } {
-  const { limit = 50, offset = 0, projectFilter, sinceTime, messageType, toolName, sessionId } = options
+): {
+  results: (MessageRecord & {
+    snippet: string
+    project_path: string
+    rank: number
+  })[]
+  total: number
+} {
+  const {
+    limit = 50,
+    offset = 0,
+    projectFilter,
+    sinceTime,
+    messageType,
+    toolName,
+    sessionId,
+  } = options
 
   const ftsQuery = toFts5Query(query)
 
@@ -383,7 +442,13 @@ export function ftsSearchWithSnippet(
   searchQuery += ` ORDER BY rank LIMIT ? OFFSET ?`
 
   const totalRow = db.prepare(countQuery).get(...params) as { total: number }
-  const results = db.prepare(searchQuery).all(...params, limit, offset) as (MessageRecord & { snippet: string; project_path: string; rank: number })[]
+  const results = db
+    .prepare(searchQuery)
+    .all(...params, limit, offset) as (MessageRecord & {
+    snippet: string
+    project_path: string
+    rank: number
+  })[]
 
   return { results, total: totalRow.total }
 }
@@ -392,24 +457,42 @@ export function ftsSearchWithSnippet(
 export function getActiveSessionsInWindow(
   db: Database,
   windowMs: number,
-): { project_path: string; session_id: string; last_activity: number; message_count: number }[] {
+): {
+  project_path: string
+  session_id: string
+  last_activity: number
+  message_count: number
+}[] {
   const cutoff = Date.now() - windowMs
-  return db.prepare(`
+  return db
+    .prepare(`
     SELECT s.project_path, m.session_id, MAX(m.timestamp) as last_activity, COUNT(*) as message_count
     FROM messages m
     JOIN sessions s ON m.session_id = s.id
     WHERE m.timestamp > ?
     GROUP BY s.project_path, m.session_id
     ORDER BY last_activity DESC
-  `).all(cutoff) as { project_path: string; session_id: string; last_activity: number; message_count: number }[]
+  `)
+    .all(cutoff) as {
+    project_path: string
+    session_id: string
+    last_activity: number
+    message_count: number
+  }[]
 }
 
 export function getActivitySummary(
   db: Database,
   windowMs: number,
-): { project_path: string; message_count: number; session_count: number; last_activity: number }[] {
+): {
+  project_path: string
+  message_count: number
+  session_count: number
+  last_activity: number
+}[] {
   const cutoff = Date.now() - windowMs
-  return db.prepare(`
+  return db
+    .prepare(`
     SELECT s.project_path,
            COUNT(*) as message_count,
            COUNT(DISTINCT m.session_id) as session_count,
@@ -419,7 +502,13 @@ export function getActivitySummary(
     WHERE m.timestamp > ?
     GROUP BY s.project_path
     ORDER BY message_count DESC
-  `).all(cutoff) as { project_path: string; message_count: number; session_count: number; last_activity: number }[]
+  `)
+    .all(cutoff) as {
+    project_path: string
+    message_count: number
+    session_count: number
+    last_activity: number
+  }[]
 }
 
 // Similar query detection
@@ -427,12 +516,20 @@ export function findSimilarQueries(
   db: Database,
   query: string,
   options: { limit?: number } = {},
-): { user_content: string; assistant_content: string; session_id: string; project_path: string; timestamp: number; rank: number }[] {
+): {
+  user_content: string
+  assistant_content: string
+  session_id: string
+  project_path: string
+  timestamp: number
+  rank: number
+}[] {
   const { limit = 5 } = options
   const ftsQuery = toFts5Query(query)
 
   // Find user messages that match, then get their corresponding assistant responses
-  return db.prepare(`
+  return db
+    .prepare(`
     SELECT
       m1.content as user_content,
       m2.content as assistant_content,
@@ -456,21 +553,36 @@ export function findSimilarQueries(
       AND m1.type = 'user'
     ORDER BY rank
     LIMIT ?
-  `).all(ftsQuery, limit) as { user_content: string; assistant_content: string; session_id: string; project_path: string; timestamp: number; rank: number }[]
+  `)
+    .all(ftsQuery, limit) as {
+    user_content: string
+    assistant_content: string
+    session_id: string
+    project_path: string
+    timestamp: number
+    rank: number
+  }[]
 }
 
 // Index metadata
 export function setIndexMeta(db: Database, key: string, value: string): void {
-  db.prepare("INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)").run(key, value)
+  db.prepare(
+    "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+  ).run(key, value)
 }
 
 export function getIndexMeta(db: Database, key: string): string | undefined {
-  const row = db.prepare("SELECT value FROM index_meta WHERE key = ?").get(key) as { value: string } | undefined
+  const row = db
+    .prepare("SELECT value FROM index_meta WHERE key = ?")
+    .get(key) as { value: string } | undefined
   return row?.value
 }
 
 // Clear tables for rebuild
-export function clearTables(db: Database, tables: ("writes" | "sessions" | "messages")[]): void {
+export function clearTables(
+  db: Database,
+  tables: ("writes" | "sessions" | "messages")[],
+): void {
   for (const table of tables) {
     db.prepare(`DELETE FROM ${table}`).run()
   }
@@ -543,7 +655,10 @@ interface SessionsIndexFile {
 }
 
 // Cache for sessions-index.json file mtimes and content
-const sessionsIndexCache = new Map<string, { mtime: number; titles: Map<string, string> }>()
+const sessionsIndexCache = new Map<
+  string,
+  { mtime: number; titles: Map<string, string> }
+>()
 
 /**
  * Find all sessions-index.json files in the projects directory
@@ -555,7 +670,11 @@ export function findSessionsIndexFiles(): string[] {
   try {
     for (const entry of fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })) {
       if (entry.isDirectory()) {
-        const indexPath = path.join(PROJECTS_DIR, entry.name, "sessions-index.json")
+        const indexPath = path.join(
+          PROJECTS_DIR,
+          entry.name,
+          "sessions-index.json",
+        )
         if (fs.existsSync(indexPath)) {
           files.push(indexPath)
         }
@@ -628,9 +747,11 @@ export function refreshSessionTitles(db: Database): number {
   let updated = 0
 
   // Get all sessions that need title updates
-  const sessions = db.prepare(`
+  const sessions = db
+    .prepare(`
     SELECT id, title FROM sessions
-  `).all() as { id: string; title: string | null }[]
+  `)
+    .all() as { id: string; title: string | null }[]
 
   for (const session of sessions) {
     const newTitle = titles.get(session.id)
@@ -646,7 +767,10 @@ export function refreshSessionTitles(db: Database): number {
 /**
  * Get session title (from cache, falls back to DB)
  */
-export function getSessionTitle(db: Database, sessionId: string): string | null {
+export function getSessionTitle(
+  db: Database,
+  sessionId: string,
+): string | null {
   // First check the live sessions-index.json files (cached)
   const titles = getAllSessionTitles()
   const liveTitle = titles.get(sessionId)
@@ -673,10 +797,12 @@ export function insertContent(
   content: string,
   timestamp: number,
 ): number {
-  const result = db.prepare(`
+  const result = db
+    .prepare(`
     INSERT INTO content (content_type, source_id, project_path, title, content, timestamp)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(contentType, sourceId, projectPath, title, content, timestamp)
+  `)
+    .run(contentType, sourceId, projectPath, title, content, timestamp)
   return Number(result.lastInsertRowid)
 }
 
@@ -693,7 +819,7 @@ export interface ContentSearchOptions {
   offset?: number
   types?: ContentType[]
   projectFilter?: string
-  sinceTime?: number    // Filter content after this timestamp
+  sinceTime?: number // Filter content after this timestamp
 }
 
 /**
@@ -703,7 +829,10 @@ export function searchAll(
   db: Database,
   query: string,
   options: ContentSearchOptions = {},
-): { results: (ContentRecord & { snippet: string; rank: number })[]; total: number } {
+): {
+  results: (ContentRecord & { snippet: string; rank: number })[]
+  total: number
+} {
   const { limit = 50, offset = 0, types, projectFilter, sinceTime } = options
   const ftsQuery = toFts5Query(query)
 
@@ -746,7 +875,12 @@ export function searchAll(
   `
 
   const totalRow = db.prepare(countQuery).get(...params) as { total: number }
-  const results = db.prepare(searchQuery).all(...params, limit, offset) as (ContentRecord & { snippet: string; rank: number })[]
+  const results = db
+    .prepare(searchQuery)
+    .all(...params, limit, offset) as (ContentRecord & {
+    snippet: string
+    rank: number
+  })[]
 
   return { results, total: totalRow.total }
 }

@@ -17,8 +17,18 @@ import fs from "fs"
 import path from "path"
 import { Glob } from "bun"
 import { Project } from "ts-morph"
-import type { FileOp, FileEditset, FileConflict, FileRenameReport, Edit } from "./types"
-import { findLinksToFile, parseWikiLinks, generateReplacement } from "../backends/wikilink"
+import type {
+  FileOp,
+  FileEditset,
+  FileConflict,
+  FileRenameReport,
+  Edit,
+} from "./types"
+import {
+  findLinksToFile,
+  parseWikiLinks,
+  generateReplacement,
+} from "../backends/wikilink"
 import { findPackageJsonEdits } from "../backends/package-json"
 import { findTsConfigEdits } from "../backends/tsconfig-json"
 
@@ -34,7 +44,10 @@ function fileChecksum(filePath: string): string {
  * Generate unique operation ID
  */
 function generateOpId(oldPath: string, newPath: string): string {
-  const hash = createHash("sha256").update(`${oldPath}:${newPath}`).digest("hex").slice(0, 8)
+  const hash = createHash("sha256")
+    .update(`${oldPath}:${newPath}`)
+    .digest("hex")
+    .slice(0, 8)
   return `file-${hash}`
 }
 
@@ -45,13 +58,18 @@ function generateOpId(oldPath: string, newPath: string): string {
  *   - Simple string replacement: "repo" -> "repo" in "repo-loader.ts" -> "repo-loader.ts"
  *   - Regex groups: "repo(.+)" -> "repo$1" (not yet implemented)
  */
-export function applyReplacement(filename: string, pattern: string | RegExp, replacement: string): string {
+export function applyReplacement(
+  filename: string,
+  pattern: string | RegExp,
+  replacement: string,
+): string {
   if (typeof pattern === "string") {
     // Case-preserving replacement
     return filename.replace(new RegExp(pattern, "gi"), (match) => {
       // Preserve case: repo -> repo, Repo -> Repo, REPO -> REPO
       if (match === match.toUpperCase()) return replacement.toUpperCase()
-      if (match[0] === match[0]!.toUpperCase()) return replacement[0]!.toUpperCase() + replacement.slice(1)
+      if (match[0] === match[0]!.toUpperCase())
+        return replacement[0]!.toUpperCase() + replacement.slice(1)
       return replacement
     })
   }
@@ -65,7 +83,7 @@ export async function findFilesToRename(
   pattern: string,
   replacement: string,
   glob: string = "**/*",
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
 ): Promise<FileOp[]> {
   const fileOps: FileOp[] = []
   const globber = new Glob(glob)
@@ -99,18 +117,25 @@ export async function findFilesToRename(
 /**
  * Check for file rename conflicts
  */
-export function checkFileConflicts(fileOps: FileOp[], cwd: string = process.cwd()): FileRenameReport {
+export function checkFileConflicts(
+  fileOps: FileOp[],
+  cwd: string = process.cwd(),
+): FileRenameReport {
   const conflicts: FileConflict[] = []
   const safe: FileOp[] = []
   const targetPaths = new Set<string>()
 
   for (const op of fileOps) {
-    const absoluteNewPath = path.isAbsolute(op.newPath) ? op.newPath : path.join(cwd, op.newPath)
+    const absoluteNewPath = path.isAbsolute(op.newPath)
+      ? op.newPath
+      : path.join(cwd, op.newPath)
 
     // Check if target already exists
     if (fs.existsSync(absoluteNewPath)) {
       // Check if it's the same file (case-insensitive rename on case-insensitive fs)
-      const absoluteOldPath = path.isAbsolute(op.oldPath) ? op.oldPath : path.join(cwd, op.oldPath)
+      const absoluteOldPath = path.isAbsolute(op.oldPath)
+        ? op.oldPath
+        : path.join(cwd, op.oldPath)
       if (absoluteOldPath.toLowerCase() !== absoluteNewPath.toLowerCase()) {
         conflicts.push({
           oldPath: op.oldPath,
@@ -160,11 +185,16 @@ export function checkFileConflicts(fileOps: FileOp[], cwd: string = process.cwd(
  * - dynamic imports: await import("./repo")
  * - require calls: require("./repo")
  */
-export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()): Edit[] {
+export function findImportEdits(
+  fileOps: FileOp[],
+  cwd: string = process.cwd(),
+): Edit[] {
   if (fileOps.length === 0) return []
 
   // Only process TypeScript/JavaScript file renames
-  const tsFileOps = fileOps.filter((op) => /\.(ts|tsx|js|jsx)$/.test(op.oldPath))
+  const tsFileOps = fileOps.filter((op) =>
+    /\.(ts|tsx|js|jsx)$/.test(op.oldPath),
+  )
   if (tsFileOps.length === 0) return []
 
   // Try to find tsconfig.json, fall back to scanning files directly
@@ -181,7 +211,9 @@ export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()):
   // Build a map of old absolute paths -> FileOp for quick lookup
   const oldPathToOp = new Map<string, FileOp>()
   for (const op of tsFileOps) {
-    const absOldPath = path.isAbsolute(op.oldPath) ? op.oldPath : path.join(cwd, op.oldPath)
+    const absOldPath = path.isAbsolute(op.oldPath)
+      ? op.oldPath
+      : path.join(cwd, op.oldPath)
     oldPathToOp.set(absOldPath, op)
     // Also add without extension for module resolution
     oldPathToOp.set(absOldPath.replace(/\.(ts|tsx|js|jsx)$/, ""), op)
@@ -208,7 +240,7 @@ export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()):
         importDecl.getModuleSpecifier(),
         fileContent,
         oldPathToOp,
-        cwd
+        cwd,
       )
       if (edit) edits.push(edit)
     }
@@ -225,7 +257,7 @@ export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()):
         exportDecl.getModuleSpecifier()!,
         fileContent,
         oldPathToOp,
-        cwd
+        cwd,
       )
       if (edit) edits.push(edit)
     }
@@ -245,7 +277,8 @@ export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()):
             const callStart = node.getStart()
             const literalOffset = text.indexOf(quote!)
             const start = callStart + literalOffset
-            const end = start + quote!.length + moduleSpecifier!.length + quote!.length
+            const end =
+              start + quote!.length + moduleSpecifier!.length + quote!.length
 
             const edit = createImportEditFromStringLiteral(
               sourceFilePath,
@@ -255,7 +288,7 @@ export function findImportEdits(fileOps: FileOp[], cwd: string = process.cwd()):
               end,
               fileContent,
               oldPathToOp,
-              cwd
+              cwd,
             )
             if (edit) edits.push(edit)
           }
@@ -281,7 +314,7 @@ function createImportEdit(
   specifierNode: { getStart(): number; getEnd(): number },
   fileContent: string,
   oldPathToOp: Map<string, FileOp>,
-  cwd: string
+  cwd: string,
 ): Edit | null {
   // Only handle relative imports
   if (!moduleSpecifier.startsWith(".")) return null
@@ -290,12 +323,20 @@ function createImportEdit(
   const resolvedPath = resolveModulePath(sourceFileDir, moduleSpecifier)
 
   // Check if this import points to a renamed file
-  const op = oldPathToOp.get(resolvedPath) || oldPathToOp.get(resolvedPath.replace(/\.(ts|tsx|js|jsx)$/, ""))
+  const op =
+    oldPathToOp.get(resolvedPath) ||
+    oldPathToOp.get(resolvedPath.replace(/\.(ts|tsx|js|jsx)$/, ""))
   if (!op) return null
 
   // Calculate the new relative path from the importing file to the new location
-  const absNewPath = path.isAbsolute(op.newPath) ? op.newPath : path.join(cwd, op.newPath)
-  const newRelativePath = computeNewRelativePath(sourceFileDir, absNewPath, moduleSpecifier)
+  const absNewPath = path.isAbsolute(op.newPath)
+    ? op.newPath
+    : path.join(cwd, op.newPath)
+  const newRelativePath = computeNewRelativePath(
+    sourceFileDir,
+    absNewPath,
+    moduleSpecifier,
+  )
 
   // The specifier node includes the quotes, so we replace the whole thing
   const start = specifierNode.getStart()
@@ -327,7 +368,7 @@ function createImportEditFromStringLiteral(
   end: number,
   fileContent: string,
   oldPathToOp: Map<string, FileOp>,
-  cwd: string
+  cwd: string,
 ): Edit | null {
   // Only handle relative imports
   if (!moduleSpecifier.startsWith(".")) return null
@@ -336,12 +377,20 @@ function createImportEditFromStringLiteral(
   const resolvedPath = resolveModulePath(sourceFileDir, moduleSpecifier)
 
   // Check if this import points to a renamed file
-  const op = oldPathToOp.get(resolvedPath) || oldPathToOp.get(resolvedPath.replace(/\.(ts|tsx|js|jsx)$/, ""))
+  const op =
+    oldPathToOp.get(resolvedPath) ||
+    oldPathToOp.get(resolvedPath.replace(/\.(ts|tsx|js|jsx)$/, ""))
   if (!op) return null
 
   // Calculate the new relative path
-  const absNewPath = path.isAbsolute(op.newPath) ? op.newPath : path.join(cwd, op.newPath)
-  const newRelativePath = computeNewRelativePath(sourceFileDir, absNewPath, moduleSpecifier)
+  const absNewPath = path.isAbsolute(op.newPath)
+    ? op.newPath
+    : path.join(cwd, op.newPath)
+  const newRelativePath = computeNewRelativePath(
+    sourceFileDir,
+    absNewPath,
+    moduleSpecifier,
+  )
 
   // Determine quote style from original
   const originalQuote = fileContent[start]
@@ -385,7 +434,11 @@ function resolveModulePath(fromDir: string, moduleSpecifier: string): string {
  * Compute the new relative path from an importing file to the renamed file
  * Preserves the original import style (with/without extension, with/without index)
  */
-function computeNewRelativePath(fromDir: string, toAbsPath: string, originalSpecifier: string): string {
+function computeNewRelativePath(
+  fromDir: string,
+  toAbsPath: string,
+  originalSpecifier: string,
+): string {
   // Get relative path from importing file's directory to new file
   let relativePath = path.relative(fromDir, toAbsPath)
 
@@ -401,7 +454,9 @@ function computeNewRelativePath(fromDir: string, toAbsPath: string, originalSpec
   }
 
   // Preserve index handling: ./foo/index -> ./foo
-  const hadIndex = originalSpecifier.endsWith("/index") || originalSpecifier.endsWith("/index.ts")
+  const hadIndex =
+    originalSpecifier.endsWith("/index") ||
+    originalSpecifier.endsWith("/index.ts")
   if (!hadIndex && relativePath.endsWith("/index")) {
     relativePath = relativePath.replace(/\/index$/, "")
   }
@@ -416,7 +471,10 @@ function computeNewRelativePath(fromDir: string, toAbsPath: string, originalSpec
  *
  * Supports: [[note]], [[note|alias]], [[note#heading]], ![[embed]]
  */
-export function findWikilinkEdits(fileOps: FileOp[], cwd: string = process.cwd()): Edit[] {
+export function findWikilinkEdits(
+  fileOps: FileOp[],
+  cwd: string = process.cwd(),
+): Edit[] {
   const edits: Edit[] = []
 
   for (const op of fileOps) {
@@ -424,14 +482,20 @@ export function findWikilinkEdits(fileOps: FileOp[], cwd: string = process.cwd()
     const ext = path.extname(op.oldPath).toLowerCase()
     if (![".md", ".markdown", ".mdx"].includes(ext)) continue
 
-    const oldName = path.basename(op.oldPath).replace(/\.(md|markdown|mdx)$/i, "")
-    const newName = path.basename(op.newPath).replace(/\.(md|markdown|mdx)$/i, "")
+    const oldName = path
+      .basename(op.oldPath)
+      .replace(/\.(md|markdown|mdx)$/i, "")
+    const newName = path
+      .basename(op.newPath)
+      .replace(/\.(md|markdown|mdx)$/i, "")
 
     // Find all files that link to this one
     const refs = findLinksToFile(op.oldPath, cwd, "**/*.md")
 
     for (const ref of refs) {
-      const filePath = path.isAbsolute(ref.file) ? ref.file : path.join(cwd, ref.file)
+      const filePath = path.isAbsolute(ref.file)
+        ? ref.file
+        : path.join(cwd, ref.file)
       if (!fs.existsSync(filePath)) continue
 
       const content = fs.readFileSync(filePath, "utf-8")
@@ -440,7 +504,10 @@ export function findWikilinkEdits(fileOps: FileOp[], cwd: string = process.cwd()
       // Find links that point to the old file
       for (const link of links) {
         const linkTarget = link.target.toLowerCase()
-        if (linkTarget === oldName.toLowerCase() || linkTarget.endsWith("/" + oldName.toLowerCase())) {
+        if (
+          linkTarget === oldName.toLowerCase() ||
+          linkTarget.endsWith("/" + oldName.toLowerCase())
+        ) {
           // Determine new target (preserve path if present)
           let newTarget = newName
           if (link.target.includes("/")) {
@@ -475,7 +542,7 @@ export async function createFileRenameProposal(
   pattern: string,
   replacement: string,
   glob: string = "**/*",
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
 ): Promise<FileEditset> {
   // Find files to rename
   const fileOps = await findFilesToRename(pattern, replacement, glob, cwd)
@@ -504,7 +571,12 @@ export async function createFileRenameProposal(
   }
 
   // Combine all link updates
-  const allLinkEdits = [...importEdits, ...wikilinkEdits, ...packageJsonEdits, ...tsconfigEdits]
+  const allLinkEdits = [
+    ...importEdits,
+    ...wikilinkEdits,
+    ...packageJsonEdits,
+    ...tsconfigEdits,
+  ]
 
   return {
     id: `file-rename-${pattern}-to-${replacement}-${Date.now()}`,
@@ -522,12 +594,14 @@ export async function createFileRenameProposal(
  */
 export function verifyFileEditset(
   editset: FileEditset,
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
 ): { valid: boolean; drifted: string[] } {
   const drifted: string[] = []
 
   for (const op of editset.fileOps) {
-    const absolutePath = path.isAbsolute(op.oldPath) ? op.oldPath : path.join(cwd, op.oldPath)
+    const absolutePath = path.isAbsolute(op.oldPath)
+      ? op.oldPath
+      : path.join(cwd, op.oldPath)
 
     if (!fs.existsSync(absolutePath)) {
       drifted.push(`${op.oldPath}: file no longer exists`)
@@ -549,7 +623,7 @@ export function verifyFileEditset(
 export function applyFileRenames(
   editset: FileEditset,
   dryRun: boolean = false,
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
 ): { applied: number; skipped: number; errors: string[] } {
   const errors: string[] = []
   let applied = 0
@@ -565,8 +639,12 @@ export function applyFileRenames(
   }
 
   for (const op of editset.fileOps) {
-    const absoluteOldPath = path.isAbsolute(op.oldPath) ? op.oldPath : path.join(cwd, op.oldPath)
-    const absoluteNewPath = path.isAbsolute(op.newPath) ? op.newPath : path.join(cwd, op.newPath)
+    const absoluteOldPath = path.isAbsolute(op.oldPath)
+      ? op.oldPath
+      : path.join(cwd, op.oldPath)
+    const absoluteNewPath = path.isAbsolute(op.newPath)
+      ? op.newPath
+      : path.join(cwd, op.newPath)
 
     // Check if file still exists with correct checksum
     if (!fs.existsSync(absoluteOldPath)) {
@@ -610,7 +688,10 @@ export function applyFileRenames(
 /**
  * Save a file editset to disk
  */
-export function saveFileEditset(editset: FileEditset, outputPath: string): void {
+export function saveFileEditset(
+  editset: FileEditset,
+  outputPath: string,
+): void {
   fs.writeFileSync(outputPath, JSON.stringify(editset, null, 2))
 }
 

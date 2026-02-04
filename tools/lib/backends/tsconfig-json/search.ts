@@ -3,7 +3,11 @@ import { readFileSync, existsSync } from "fs"
 import { dirname, join, relative } from "path"
 import type { Reference, Edit, Editset } from "../../core/types"
 import { computeChecksum, computeRefId } from "../../core/apply"
-import { parseTsConfig, tsconfigPathMatchesFile, generateTsConfigReplacementPath } from "./parser"
+import {
+  parseTsConfig,
+  tsconfigPathMatchesFile,
+  generateTsConfigReplacementPath,
+} from "./parser"
 
 /**
  * Find all tsconfig.json files that reference a specific file
@@ -11,7 +15,7 @@ import { parseTsConfig, tsconfigPathMatchesFile, generateTsConfigReplacementPath
 export function findTsConfigRefs(
   targetFile: string,
   searchPath: string = ".",
-  glob: string = "**/tsconfig*.json"
+  glob: string = "**/tsconfig*.json",
 ): Reference[] {
   const refs: Reference[] = []
   const tsconfigFiles = findTsConfigFiles(searchPath, glob)
@@ -52,7 +56,7 @@ export function findTsConfigRefs(
 export function findTsConfigEdits(
   oldPath: string,
   newPath: string,
-  searchPath: string = "."
+  searchPath: string = ".",
 ): Edit[] {
   const edits: Edit[] = []
   const tsconfigFiles = findTsConfigFiles(searchPath, "**/tsconfig*.json")
@@ -69,7 +73,11 @@ export function findTsConfigEdits(
 
       if (tsconfigPathMatchesFile(pathRef.path, oldRelative)) {
         const newRelative = relative(configDir, join(searchPath, newPath))
-        const replacement = generateTsConfigReplacementPath(pathRef.path, oldPath, newRelative)
+        const replacement = generateTsConfigReplacementPath(
+          pathRef.path,
+          oldPath,
+          newRelative,
+        )
 
         const originalQuote = content[pathRef.start]
         const fullReplacement = `${originalQuote}${replacement}${originalQuote}`
@@ -96,7 +104,7 @@ export function findTsConfigEdits(
 export function createTsConfigEditset(
   oldPath: string,
   newPath: string,
-  searchPath: string = "."
+  searchPath: string = ".",
 ): Editset {
   const edits = findTsConfigEdits(oldPath, newPath, searchPath)
 
@@ -108,7 +116,10 @@ export function createTsConfigEditset(
     const content = readFileSync(filePath, "utf-8")
     const checksum = computeChecksum(content)
     const [line, col] = offsetToLineCol(content, edit.offset)
-    const [endLine, endCol] = offsetToLineCol(content, edit.offset + edit.length)
+    const [endLine, endCol] = offsetToLineCol(
+      content,
+      edit.offset + edit.length,
+    )
 
     refs.push({
       refId: computeRefId(edit.file, line, col, endLine, endCol),

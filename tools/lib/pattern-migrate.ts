@@ -52,7 +52,11 @@ export function findPatterns(patterns: string[], glob: string): Match[] {
       try {
         const data = JSON.parse(line) as {
           type: string
-          data: { path: { text: string }; line_number: number; lines: { text: string } }
+          data: {
+            path: { text: string }
+            line_number: number
+            lines: { text: string }
+          }
         }
         if (data.type !== "match") continue
 
@@ -116,7 +120,7 @@ ${m.context.join("\n")}
 \`\`\`
 
 Line to transform: \`${m.text}\`
-`
+`,
     )
     .join("\n---\n")
 }
@@ -124,7 +128,10 @@ Line to transform: \`${m.text}\`
 /**
  * Build the full LLM prompt for migration.
  */
-export function buildMigrationPrompt(matches: Match[], userPrompt: string): string {
+export function buildMigrationPrompt(
+  matches: Match[],
+  userPrompt: string,
+): string {
   const llmInput = formatForLLM(matches)
 
   return `${userPrompt}
@@ -163,7 +170,10 @@ export function parseReplacements(response: string): Replacement[] {
 /**
  * Create an editset from matches and replacements.
  */
-export function createEditset(matches: Match[], replacements: Replacement[]): Editset {
+export function createEditset(
+  matches: Match[],
+  replacements: Replacement[],
+): Editset {
   const refs: Reference[] = []
   const edits: Edit[] = []
   const fileChecksums = new Map<string, string>()
@@ -185,7 +195,10 @@ export function createEditset(matches: Match[], replacements: Replacement[]): Ed
     if (!fileChecksums.has(match.file)) {
       try {
         const content = readFileSync(match.file, "utf-8")
-        const hash = createHash("sha256").update(content).digest("hex").slice(0, 12)
+        const hash = createHash("sha256")
+          .update(content)
+          .digest("hex")
+          .slice(0, 12)
         fileChecksums.set(match.file, hash)
       } catch {
         fileChecksums.set(match.file, "unknown")

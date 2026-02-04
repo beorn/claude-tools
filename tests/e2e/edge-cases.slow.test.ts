@@ -49,7 +49,7 @@ describe("E2E: Edge Cases", () => {
 
     beforeAll(() => {
       const output = runRefactor(
-        `symbols.find --pattern widget --tsconfig ${FIXTURES_ROOT}/tsconfig.json`
+        `symbols.find --pattern widget --tsconfig ${FIXTURES_ROOT}/tsconfig.json`,
       )
       symbols = JSON.parse(output) as typeof symbols
     })
@@ -62,13 +62,13 @@ describe("E2E: Edge Cases", () => {
     test("Bug 1: finds local variables inside functions", () => {
       // widgetRoot defined inside processWidget()
       const localWidgetRoots = symbols.filter(
-        (s) => s.name === "widgetRoot" && s.file.includes("all-cases.ts")
+        (s) => s.name === "widgetRoot" && s.file.includes("all-cases.ts"),
       )
       expect(localWidgetRoots.length).toBeGreaterThanOrEqual(1)
 
       // widgetDir defined inside nested()
       const nestedWidgetDirs = symbols.filter(
-        (s) => s.name === "widgetDir" && s.file.includes("all-cases.ts")
+        (s) => s.name === "widgetDir" && s.file.includes("all-cases.ts"),
       )
       expect(nestedWidgetDirs.length).toBeGreaterThanOrEqual(1)
     })
@@ -137,7 +137,7 @@ describe("E2E: Edge Cases", () => {
 
     beforeAll(() => {
       const output = runRefactor(
-        `rename.batch --pattern widget --replace gadget --check-conflicts --tsconfig ${FIXTURES_ROOT}/tsconfig.json`
+        `rename.batch --pattern widget --replace gadget --check-conflicts --tsconfig ${FIXTURES_ROOT}/tsconfig.json`,
       )
       conflictReport = JSON.parse(output) as typeof conflictReport
     })
@@ -145,7 +145,7 @@ describe("E2E: Edge Cases", () => {
     test("Bug 4: detects conflicts when target name already exists", () => {
       // widgetStorage → gadgetStorage should conflict because gadgetStorage exists
       const storageConflict = conflictReport.conflicts.find(
-        (c) => c.from === "widgetStorage"
+        (c) => c.from === "widgetStorage",
       )
       expect(storageConflict).toBeDefined()
       expect(storageConflict?.to).toBe("gadgetStorage")
@@ -156,9 +156,9 @@ describe("E2E: Edge Cases", () => {
       expect(conflictReport.safe.length).toBeGreaterThan(0)
 
       // topLevelWidget → topLevelGadget should be safe (no topLevelGadget exists)
-      expect(
-        conflictReport.safe.some((s) => s.from === "topLevelWidget")
-      ).toBe(true)
+      expect(conflictReport.safe.some((s) => s.from === "topLevelWidget")).toBe(
+        true,
+      )
     })
 
     test("conflict report includes existing symbol location", () => {
@@ -184,7 +184,7 @@ describe("E2E: Edge Cases", () => {
 
       // Create editset, skipping conflicts
       runRefactor(
-        `rename.batch --pattern widget --replace gadget --skip widgetStorage,widgetDatabase,widgetLocal --output ${editsetPath} --tsconfig ${tempDir}/tsconfig.json`
+        `rename.batch --pattern widget --replace gadget --skip widgetStorage,widgetDatabase,widgetLocal --output ${editsetPath} --tsconfig ${tempDir}/tsconfig.json`,
       )
 
       const editset = JSON.parse(readFileSync(editsetPath, "utf-8")) as {

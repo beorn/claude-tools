@@ -3,7 +3,11 @@ import { readFileSync, existsSync } from "fs"
 import { basename, dirname, join, relative } from "path"
 import type { Reference, Edit, Editset } from "../../core/types"
 import { computeChecksum, computeRefId } from "../../core/apply"
-import { parsePackageJson, pathMatchesFile, generateReplacementPath } from "./parser"
+import {
+  parsePackageJson,
+  pathMatchesFile,
+  generateReplacementPath,
+} from "./parser"
 
 /**
  * Find all package.json files that reference a specific file
@@ -11,7 +15,7 @@ import { parsePackageJson, pathMatchesFile, generateReplacementPath } from "./pa
 export function findPackageJsonRefs(
   targetFile: string,
   searchPath: string = ".",
-  glob: string = "**/package.json"
+  glob: string = "**/package.json",
 ): Reference[] {
   const refs: Reference[] = []
 
@@ -57,7 +61,7 @@ export function findPackageJsonRefs(
 export function findPackageJsonEdits(
   oldPath: string,
   newPath: string,
-  searchPath: string = "."
+  searchPath: string = ".",
 ): Edit[] {
   const edits: Edit[] = []
 
@@ -78,7 +82,11 @@ export function findPackageJsonEdits(
       if (pathMatchesFile(pathRef.path, oldRelative)) {
         // Generate the new path
         const newRelative = relative(pkgDir, join(searchPath, newPath))
-        const replacement = generateReplacementPath(pathRef.path, oldPath, newRelative)
+        const replacement = generateReplacementPath(
+          pathRef.path,
+          oldPath,
+          newRelative,
+        )
 
         // The replacement includes quotes
         const originalQuote = content[pathRef.start]
@@ -107,7 +115,7 @@ export function findPackageJsonEdits(
 export function createPackageJsonEditset(
   oldPath: string,
   newPath: string,
-  searchPath: string = "."
+  searchPath: string = ".",
 ): Editset {
   const edits = findPackageJsonEdits(oldPath, newPath, searchPath)
 
@@ -120,7 +128,10 @@ export function createPackageJsonEditset(
     const content = readFileSync(filePath, "utf-8")
     const checksum = computeChecksum(content)
     const [line, col] = offsetToLineCol(content, edit.offset)
-    const [endLine, endCol] = offsetToLineCol(content, edit.offset + edit.length)
+    const [endLine, endCol] = offsetToLineCol(
+      content,
+      edit.offset + edit.length,
+    )
 
     refs.push({
       refId: computeRefId(edit.file, line, col, endLine, endCol),
@@ -146,7 +157,9 @@ export function createPackageJsonEditset(
 /**
  * Find all package.json that might have outdated paths (for linting)
  */
-export function findBrokenPackageJsonPaths(searchPath: string = "."): Reference[] {
+export function findBrokenPackageJsonPaths(
+  searchPath: string = ".",
+): Reference[] {
   const refs: Reference[] = []
   const packageJsonFiles = findPackageJsonFiles(searchPath, "**/package.json")
 
@@ -160,7 +173,8 @@ export function findBrokenPackageJsonPaths(searchPath: string = "."): Reference[
 
     for (const pathRef of pathRefs) {
       // Skip non-file paths (like package names in dependencies)
-      if (!pathRef.path.startsWith(".") && !pathRef.path.startsWith("/")) continue
+      if (!pathRef.path.startsWith(".") && !pathRef.path.startsWith("/"))
+        continue
 
       // Check if the referenced file exists
       const resolvedPath = join(pkgDir, pathRef.path)

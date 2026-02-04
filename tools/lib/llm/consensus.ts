@@ -7,7 +7,12 @@
 import { queryModel } from "./research"
 import { getLanguageModel, isProviderAvailable } from "./providers"
 import { generateText } from "ai"
-import type { Model, ModelResponse, ConsensusResult, ThinkingLevel } from "./types"
+import type {
+  Model,
+  ModelResponse,
+  ConsensusResult,
+  ThinkingLevel,
+} from "./types"
 import { getModelsForLevel, getModel, MODELS } from "./types"
 
 export interface ConsensusOptions {
@@ -22,7 +27,9 @@ export interface ConsensusOptions {
 /**
  * Query multiple models and optionally synthesize their responses
  */
-export async function consensus(options: ConsensusOptions): Promise<ConsensusResult> {
+export async function consensus(
+  options: ConsensusOptions,
+): Promise<ConsensusResult> {
   const {
     question,
     level = "consensus",
@@ -36,7 +43,7 @@ export async function consensus(options: ConsensusOptions): Promise<ConsensusRes
   if (options.models) {
     models = options.models
   } else if (options.modelIds) {
-    models = options.modelIds.map(id => {
+    models = options.modelIds.map((id) => {
       const model = getModel(id)
       if (!model) throw new Error(`Unknown model: ${id}`)
       return model
@@ -46,22 +53,25 @@ export async function consensus(options: ConsensusOptions): Promise<ConsensusRes
   }
 
   // Filter to available models only
-  const availableModels = models.filter(m => isProviderAvailable(m.provider))
+  const availableModels = models.filter((m) => isProviderAvailable(m.provider))
   if (availableModels.length === 0) {
     throw new Error("No models available for consensus (check API keys)")
   }
 
   // Query all models in parallel
   const responses = await Promise.all(
-    availableModels.map(async model => {
+    availableModels.map(async (model) => {
       const result = await queryModel({ question, model })
       if (onModelComplete) onModelComplete(result.response)
       return result.response
-    })
+    }),
   )
 
   // Calculate total cost
-  const totalCost = responses.reduce((sum, r) => sum + (r.usage?.estimatedCost || 0), 0)
+  const totalCost = responses.reduce(
+    (sum, r) => sum + (r.usage?.estimatedCost || 0),
+    0,
+  )
 
   // Build base result
   const result: ConsensusResult = {
@@ -100,11 +110,11 @@ interface SynthesisResult {
  */
 async function synthesizeResponses(
   question: string,
-  responses: ModelResponse[]
+  responses: ModelResponse[],
 ): Promise<SynthesisResult> {
   // Format responses for the synthesis prompt
   const formattedResponses = responses
-    .filter(r => !r.error && r.content)
+    .filter((r) => !r.error && r.content)
     .map((r, i) => `### Model ${i + 1}: ${r.model.displayName}\n${r.content}`)
     .join("\n\n")
 
@@ -130,15 +140,19 @@ Format your response as JSON:
 }`
 
   // Use a fast, cheap model for synthesis (prefer Claude or GPT-4o-mini)
-  const synthesisModel = MODELS.find(
-    m => (m.modelId === "claude-3-5-haiku-latest" || m.modelId === "gpt-4o-mini") &&
-      isProviderAvailable(m.provider)
-  ) || MODELS.find(m => m.costTier === "low" && isProviderAvailable(m.provider))
+  const synthesisModel =
+    MODELS.find(
+      (m) =>
+        (m.modelId === "claude-3-5-haiku-latest" ||
+          m.modelId === "gpt-4o-mini") &&
+        isProviderAvailable(m.provider),
+    ) ||
+    MODELS.find((m) => m.costTier === "low" && isProviderAvailable(m.provider))
 
   if (!synthesisModel) {
     // Fallback: just concatenate responses
     return {
-      synthesis: responses.map(r => r.content).join("\n\n---\n\n"),
+      synthesis: responses.map((r) => r.content).join("\n\n---\n\n"),
       agreements: [],
       disagreements: [],
       confidence: 0.5,
@@ -172,7 +186,7 @@ Format your response as JSON:
   }
 
   return {
-    synthesis: responses.map(r => r.content).join("\n\n---\n\n"),
+    synthesis: responses.map((r) => r.content).join("\n\n---\n\n"),
     agreements: [],
     disagreements: [],
     confidence: 0.5,
@@ -184,9 +198,11 @@ Format your response as JSON:
  */
 export async function deepConsensus(
   question: string,
-  options: { onModelComplete?: (response: ModelResponse) => void } = {}
+  options: { onModelComplete?: (response: ModelResponse) => void } = {},
 ): Promise<ConsensusResult> {
-  const deepModels = MODELS.filter(m => m.isDeepResearch && isProviderAvailable(m.provider))
+  const deepModels = MODELS.filter(
+    (m) => m.isDeepResearch && isProviderAvailable(m.provider),
+  )
 
   if (deepModels.length === 0) {
     throw new Error("No deep research models available")

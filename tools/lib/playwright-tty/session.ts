@@ -24,7 +24,10 @@ export interface TtySession {
   page: Page
   browser: Browser
 
-  reset(options?: { command?: string[]; env?: Record<string, string> }): Promise<string>
+  reset(options?: {
+    command?: string[]
+    env?: Record<string, string>
+  }): Promise<string>
   close(): Promise<void>
 }
 

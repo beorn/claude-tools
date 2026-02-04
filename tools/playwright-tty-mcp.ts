@@ -48,7 +48,8 @@ async function ensureBrowserInstalled(): Promise<void> {
 
   if (cacheExists) {
     // Check for any chromium directory
-    const { stdout } = await $`ls -d ${BROWSER_CACHE}/chromium-* 2>/dev/null || true`.quiet()
+    const { stdout } =
+      await $`ls -d ${BROWSER_CACHE}/chromium-* 2>/dev/null || true`.quiet()
     if (stdout.toString().trim()) {
       return // Browser already installed
     }
@@ -82,8 +83,13 @@ async function main() {
       description:
         "Start a terminal session with ttyd and connect Playwright browser",
       inputSchema: {
-        command: z.array(z.string()).describe("Command to run (e.g. ['bun', 'km', 'view', '/path'])"),
-        env: z.record(z.string(), z.string()).optional().describe("Environment variables"),
+        command: z
+          .array(z.string())
+          .describe("Command to run (e.g. ['bun', 'km', 'view', '/path'])"),
+        env: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe("Environment variables"),
         viewport: z
           .object({
             width: z.number().default(1000),
@@ -116,8 +122,14 @@ async function main() {
       description: "Restart the TTY process without closing the browser",
       inputSchema: {
         sessionId: z.string().describe("Session ID"),
-        command: z.array(z.string()).optional().describe("New command (optional)"),
-        env: z.record(z.string(), z.string()).optional().describe("New environment (optional)"),
+        command: z
+          .array(z.string())
+          .optional()
+          .describe("New command (optional)"),
+        env: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe("New environment (optional)"),
       },
     },
     async (args) => {
@@ -211,7 +223,7 @@ async function main() {
       },
     },
     async (args) => {
-      const result = await backend.callTool("tty_screenshot", args) as {
+      const result = (await backend.callTool("tty_screenshot", args)) as {
         path?: string
         data?: string
         mimeType: "image/png"

@@ -3,7 +3,12 @@ import { readFileSync, existsSync } from "fs"
 import { basename, dirname, relative, resolve } from "path"
 import type { Reference, Edit, FileEditset, FileOp } from "../../core/types"
 import { computeChecksum, computeRefId } from "../../core/apply"
-import { parseWikiLinks, linkMatchesTarget, generateReplacement, type WikiLink } from "./parser"
+import {
+  parseWikiLinks,
+  linkMatchesTarget,
+  generateReplacement,
+  type WikiLink,
+} from "./parser"
 
 /**
  * Find all wikilinks pointing to a specific file
@@ -15,7 +20,7 @@ import { parseWikiLinks, linkMatchesTarget, generateReplacement, type WikiLink }
 export function findLinksToFile(
   targetFile: string,
   searchPath: string = ".",
-  glob: string = "**/*.md"
+  glob: string = "**/*.md",
 ): Reference[] {
   const targetName = basename(targetFile).replace(/\.md$/, "")
   const targetPath = targetFile.replace(/\.md$/, "")
@@ -69,7 +74,7 @@ export function findLinksToFile(
 export function createFileRenameEditset(
   oldPath: string,
   newPath: string,
-  searchPath: string = "."
+  searchPath: string = ".",
 ): FileEditset {
   const oldName = basename(oldPath).replace(/\.md$/, "")
   const newName = basename(newPath).replace(/\.md$/, "")
@@ -88,7 +93,9 @@ export function createFileRenameEditset(
     const links = parseWikiLinks(content)
 
     // Find the specific link at this reference's location
-    const link = links.find((l) => l.start === lineColToOffset(content, ref.range[0], ref.range[1]))
+    const link = links.find(
+      (l) => l.start === lineColToOffset(content, ref.range[0], ref.range[1]),
+    )
     if (!link) continue
 
     // Determine if we need path in the new link
@@ -116,7 +123,9 @@ export function createFileRenameEditset(
   })
 
   // Create the file operation for the actual rename
-  const fileChecksum = existsSync(oldPath) ? computeChecksum(readFileSync(oldPath, "utf-8")) : ""
+  const fileChecksum = existsSync(oldPath)
+    ? computeChecksum(readFileSync(oldPath, "utf-8"))
+    : ""
 
   const fileOp: FileOp = {
     opId: computeRefId(oldPath, 0, 0, 0, 0),
@@ -140,9 +149,14 @@ export function createFileRenameEditset(
 /**
  * Find all broken wikilinks (links to non-existent files)
  */
-export function findBrokenLinks(searchPath: string = ".", glob: string = "**/*.md"): Reference[] {
+export function findBrokenLinks(
+  searchPath: string = ".",
+  glob: string = "**/*.md",
+): Reference[] {
   const files = findMarkdownFiles(searchPath, glob)
-  const existingFiles = new Set(files.map((f) => basename(f).replace(/\.md$/, "").toLowerCase()))
+  const existingFiles = new Set(
+    files.map((f) => basename(f).replace(/\.md$/, "").toLowerCase()),
+  )
 
   const refs: Reference[] = []
 
@@ -175,14 +189,21 @@ export function findBrokenLinks(searchPath: string = ".", glob: string = "**/*.m
 
 // Internal helpers
 
-function findCandidateFiles(targetName: string, searchPath: string, glob: string): string[] {
+function findCandidateFiles(
+  targetName: string,
+  searchPath: string,
+  glob: string,
+): string[] {
   try {
     // Use ripgrep to find files containing the target name
     const pattern = targetName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-    const output = execSync(`rg -l "${pattern}" --glob "${glob}" "${searchPath}"`, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    })
+    const output = execSync(
+      `rg -l "${pattern}" --glob "${glob}" "${searchPath}"`,
+      {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    )
     return output.trim().split("\n").filter(Boolean)
   } catch (error: unknown) {
     const execError = error as { status?: number }

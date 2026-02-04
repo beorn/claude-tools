@@ -47,7 +47,9 @@ describe("wikilink backend", () => {
     })
 
     test("implements createPatternReplaceProposal", () => {
-      expect(typeof WikilinkBackend.createPatternReplaceProposal).toBe("function")
+      expect(typeof WikilinkBackend.createPatternReplaceProposal).toBe(
+        "function",
+      )
     })
   })
 
@@ -169,7 +171,9 @@ describe("wikilink backend", () => {
 
     test("preserves heading and alias", () => {
       const link = parseWikiLinks("[[old-note#section|display]]")[0]!
-      expect(generateReplacement(link, "new-note")).toBe("[[new-note#section|display]]")
+      expect(generateReplacement(link, "new-note")).toBe(
+        "[[new-note#section|display]]",
+      )
     })
 
     test("generates embed", () => {
@@ -195,7 +199,9 @@ describe("wikilink backend", () => {
       try {
         execSync("which rg", { stdio: "pipe" })
       } catch {
-        console.log("Skipping findLinksToFile tests: ripgrep (rg) not installed")
+        console.log(
+          "Skipping findLinksToFile tests: ripgrep (rg) not installed",
+        )
         return
       }
 
@@ -207,7 +213,7 @@ describe("wikilink backend", () => {
         `# Index
 See [[target-note]] for details.
 Also [[target-note#section|alias here]].
-`
+`,
       )
 
       writeFileSync(
@@ -215,10 +221,13 @@ Also [[target-note#section|alias here]].
         `# Other
 Link to [[target-note]].
 And embed ![[target-note]].
-`
+`,
       )
 
-      writeFileSync(join(tempDir, "target-note.md"), "# Target\nThis is the target.")
+      writeFileSync(
+        join(tempDir, "target-note.md"),
+        "# Target\nThis is the target.",
+      )
 
       writeFileSync(join(tempDir, "no-links.md"), "# No Links\nJust text here.")
     })
@@ -254,7 +263,9 @@ And embed ![[target-note]].
       try {
         execSync("which rg", { stdio: "pipe" })
       } catch {
-        console.log("Skipping createFileRenameEditset tests: ripgrep (rg) not installed")
+        console.log(
+          "Skipping createFileRenameEditset tests: ripgrep (rg) not installed",
+        )
         return
       }
 
@@ -265,7 +276,7 @@ And embed ![[target-note]].
         `# Docs
 Reference: [[old-name]]
 With heading: [[old-name#intro]]
-`
+`,
       )
 
       writeFileSync(join(tempDir, "old-name.md"), "# Old Name\nContent here.")
@@ -328,7 +339,9 @@ With heading: [[old-name#intro]]
       try {
         execSync("which rg", { stdio: "pipe" })
       } catch {
-        console.log("Skipping findBrokenLinks tests: ripgrep (rg) not installed")
+        console.log(
+          "Skipping findBrokenLinks tests: ripgrep (rg) not installed",
+        )
         return
       }
 
@@ -339,7 +352,7 @@ With heading: [[old-name#intro]]
         `# Doc
 Good link: [[exists]]
 Broken: [[does-not-exist]]
-`
+`,
       )
 
       writeFileSync(join(tempDir, "exists.md"), "# Exists\nI exist.")
@@ -364,7 +377,9 @@ Broken: [[does-not-exist]]
         const refs = findBrokenLinks()
 
         expect(refs.length).toBeGreaterThanOrEqual(1)
-        expect(refs.some((r) => r.preview.includes("does-not-exist"))).toBe(true)
+        expect(refs.some((r) => r.preview.includes("does-not-exist"))).toBe(
+          true,
+        )
       } finally {
         process.chdir(cwd)
       }

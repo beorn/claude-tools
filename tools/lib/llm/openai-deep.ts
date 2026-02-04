@@ -47,9 +47,16 @@ export interface DeepResearchOptions {
  * Query OpenAI deep research model using Responses API
  */
 export async function queryOpenAIDeepResearch(
-  options: DeepResearchOptions
+  options: DeepResearchOptions,
 ): Promise<ModelResponse> {
-  const { topic, model, stream = false, onToken, noPersist = false, context } = options
+  const {
+    topic,
+    model,
+    stream = false,
+    onToken,
+    noPersist = false,
+    context,
+  } = options
   // Default to background mode for streaming to enable recovery
   const background = options.background ?? stream
   const startTime = Date.now()
@@ -110,7 +117,10 @@ Please provide:
         }
 
         // Track sequence number for potential resume
-        if ("sequence_number" in event && typeof event.sequence_number === "number") {
+        if (
+          "sequence_number" in event &&
+          typeof event.sequence_number === "number"
+        ) {
           lastSequence = event.sequence_number
         }
 
@@ -137,12 +147,16 @@ Please provide:
       // If stream ended without completing (connection dropped during deep research),
       // fall back to polling retrieveResponse() until the background response finishes
       if (!completed && responseId && background) {
-        process.stderr.write("\n⏳ Stream disconnected, polling for background response...\n")
+        process.stderr.write(
+          "\n⏳ Stream disconnected, polling for background response...\n",
+        )
         const pollResult = await pollForCompletion(responseId, {
           intervalMs: 5_000,
-          maxAttempts: 180,  // 15 min max
+          maxAttempts: 180, // 15 min max
           onProgress: (status, elapsed) => {
-            process.stderr.write(`\r⏳ ${status} (${Math.round(elapsed / 1000)}s elapsed)`)
+            process.stderr.write(
+              `\r⏳ ${status} (${Math.round(elapsed / 1000)}s elapsed)`,
+            )
           },
         })
 
@@ -217,7 +231,8 @@ Please provide:
           ? {
               promptTokens: usage.input_tokens || 0,
               completionTokens: usage.output_tokens || 0,
-              totalTokens: (usage.input_tokens || 0) + (usage.output_tokens || 0),
+              totalTokens:
+                (usage.input_tokens || 0) + (usage.output_tokens || 0),
             }
           : undefined,
         durationMs: Date.now() - startTime,
@@ -228,13 +243,25 @@ Please provide:
     let errorMessage = error instanceof Error ? error.message : String(error)
 
     if (errorMessage.includes("verified")) {
-      errorMessage = "Organization not verified. Visit https://platform.openai.com/settings/organization/general to verify."
-    } else if (errorMessage.includes("rate_limit") || errorMessage.includes("429")) {
+      errorMessage =
+        "Organization not verified. Visit https://platform.openai.com/settings/organization/general to verify."
+    } else if (
+      errorMessage.includes("rate_limit") ||
+      errorMessage.includes("429")
+    ) {
       errorMessage = "Rate limited. Wait a moment and try again."
-    } else if (errorMessage.includes("insufficient_quota") || errorMessage.includes("billing")) {
-      errorMessage = "Insufficient credits. Check your OpenAI billing at https://platform.openai.com/account/billing"
-    } else if (errorMessage.includes("invalid_api_key") || errorMessage.includes("401")) {
-      errorMessage = "Invalid API key. Check OPENAI_API_KEY environment variable."
+    } else if (
+      errorMessage.includes("insufficient_quota") ||
+      errorMessage.includes("billing")
+    ) {
+      errorMessage =
+        "Insufficient credits. Check your OpenAI billing at https://platform.openai.com/account/billing"
+    } else if (
+      errorMessage.includes("invalid_api_key") ||
+      errorMessage.includes("401")
+    ) {
+      errorMessage =
+        "Invalid API key. Check OPENAI_API_KEY environment variable."
     }
 
     return {
@@ -255,11 +282,15 @@ export async function pollForCompletion(
     intervalMs?: number
     maxAttempts?: number
     onProgress?: (status: string, elapsedMs: number) => void
-  } = {}
+  } = {},
 ): Promise<{
   status: string
   content: string
-  usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  }
   error?: string
 }> {
   const { intervalMs = 5_000, maxAttempts = 180 } = options
@@ -276,19 +307,23 @@ export async function pollForCompletion(
       return result
     }
 
-    if (result.status === "failed" || result.status === "cancelled" || result.status === "expired") {
+    if (
+      result.status === "failed" ||
+      result.status === "cancelled" ||
+      result.status === "expired"
+    ) {
       return { ...result, error: `Response ${result.status}` }
     }
 
     // Still in progress or queued - wait and retry
     options.onProgress?.(result.status, Date.now() - startTime)
-    await new Promise(resolve => setTimeout(resolve, intervalMs))
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 
   return {
     status: "timeout",
     content: "",
-    error: `Timed out after ${maxAttempts} attempts (${Math.round((maxAttempts * (intervalMs)) / 1000)}s)`,
+    error: `Timed out after ${maxAttempts} attempts (${Math.round((maxAttempts * intervalMs) / 1000)}s)`,
   }
 }
 
@@ -298,7 +333,11 @@ export async function pollForCompletion(
 export async function retrieveResponse(responseId: string): Promise<{
   status: string
   content: string
-  usage?: { promptTokens: number; completionTokens: number; totalTokens: number }
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  }
   error?: string
 }> {
   const openai = getClient()
@@ -346,8 +385,15 @@ export async function retrieveResponse(responseId: string): Promise<{
 export async function resumeStream(
   responseId: string,
   fromSequence: number,
-  onToken: (token: string) => void
-): Promise<{ content: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+  onToken: (token: string) => void,
+): Promise<{
+  content: string
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  }
+}> {
   const openai = getClient()
 
   // Note: The OpenAI SDK may support streaming from a response ID

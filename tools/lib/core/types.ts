@@ -4,7 +4,16 @@ import { z } from "zod"
 export const SymbolInfo = z.object({
   symbolKey: z.string(), // stable ID: "file:line:col:name"
   name: z.string(),
-  kind: z.enum(["variable", "function", "type", "interface", "property", "class", "method", "parameter"]),
+  kind: z.enum([
+    "variable",
+    "function",
+    "type",
+    "interface",
+    "property",
+    "class",
+    "method",
+    "parameter",
+  ]),
   file: z.string(),
   line: z.number(),
   column: z.number(),
@@ -88,7 +97,7 @@ export const ApplyOutput = z.object({
     z.object({
       file: z.string(),
       reason: z.string(),
-    })
+    }),
   ),
 })
 export type ApplyOutput = z.infer<typeof ApplyOutput>

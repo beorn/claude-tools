@@ -6,13 +6,13 @@ Generic Claude Code tools - reusable across projects.
 
 ## Tools
 
-| Tool | Description | Entry Point |
-|------|-------------|-------------|
+| Tool       | Description                                                   | Entry Point             |
+| ---------- | ------------------------------------------------------------- | ----------------------- |
 | `refactor` | Batch rename, replace, API migration (run `--help` for guide) | `bun tools/refactor.ts` |
-| `llm` | Multi-LLM research, consensus, deep research | `bun tools/llm.ts` |
-| `history` | Claude Code session search with FTS5 | `bun tools/history.ts` |
-| `tty` | TTY testing MCP server (ttyd + Playwright) | MCP server |
-| `worktree` | Git worktree management with submodules | `bun tools/worktree.ts` |
+| `llm`      | Multi-LLM research, consensus, deep research                  | `bun tools/llm.ts`      |
+| `history`  | Claude Code session search with FTS5                          | `bun tools/history.ts`  |
+| `tty`      | TTY testing MCP server (ttyd + Playwright)                    | MCP server              |
+| `worktree` | Git worktree management with submodules                       | `bun tools/worktree.ts` |
 
 ### Refactor Tool Capabilities
 
@@ -26,6 +26,7 @@ Run `bun tools/refactor.ts --help` for detailed command reference and examples.
 ## Skills
 
 See `skills/` for Claude Code skill definitions:
+
 - `batch-refactor/` - Batch refactoring workflow
 - `llm/` - Multi-LLM queries
 - `tty/` - Terminal app testing
@@ -33,11 +34,13 @@ See `skills/` for Claude Code skill definitions:
 ## Usage
 
 Include as git submodule in `vendor/`:
+
 ```bash
 git submodule add <repo-url> vendor/beorn-tools
 ```
 
 Run tools:
+
 ```bash
 bun vendor/beorn-tools/tools/llm.ts ask "question"
 bun vendor/beorn-tools/tools/refactor.ts rename.batch --pattern foo --replace bar

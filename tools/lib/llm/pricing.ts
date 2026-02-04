@@ -15,11 +15,14 @@ const STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 interface PricingCache {
   updatedAt: string // ISO date
-  models: Record<string, {
-    inputPricePerM: number
-    outputPricePerM: number
-    typicalLatencyMs?: number
-  }>
+  models: Record<
+    string,
+    {
+      inputPricePerM: number
+      outputPricePerM: number
+      typicalLatencyMs?: number
+    }
+  >
 }
 
 /**
@@ -97,7 +100,10 @@ export function cacheCurrentPricing(): void {
   const models: PricingCache["models"] = {}
 
   for (const model of MODELS) {
-    if (model.inputPricePerM !== undefined && model.outputPricePerM !== undefined) {
+    if (
+      model.inputPricePerM !== undefined &&
+      model.outputPricePerM !== undefined
+    ) {
       models[model.modelId] = {
         inputPricePerM: model.inputPricePerM,
         outputPricePerM: model.outputPricePerM,

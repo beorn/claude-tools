@@ -3,6 +3,7 @@
 Multi-LLM research with tiered thinking levels, deep research, and consensus.
 
 **Run from your project:**
+
 ```bash
 bun vendor/beorn-tools/tools/llm.ts <command>
 ```
@@ -17,13 +18,13 @@ bun vendor/beorn-tools/tools/llm.ts <command>
 
 ## Thinking Levels
 
-| Level | Name | What It Does | Est. Cost |
-|-------|------|--------------|-----------|
-| 1 | quick | Single fast model (GPT-4o-mini, Gemini Flash) | ~$0.01 |
-| 2 | standard | Single strong model (GPT-4o, Claude Sonnet) | ~$0.10 |
-| 3 | research | Single deep research model (O3 Deep Research, Perplexity Pro) | ~$2-5 |
-| 4 | consensus | Multiple models + synthesis | ~$1-3 |
-| 5 | deep | All deep research models + consolidation | ~$15-30 |
+| Level | Name      | What It Does                                                  | Est. Cost |
+| ----- | --------- | ------------------------------------------------------------- | --------- |
+| 1     | quick     | Single fast model (GPT-4o-mini, Gemini Flash)                 | ~$0.01    |
+| 2     | standard  | Single strong model (GPT-4o, Claude Sonnet)                   | ~$0.10    |
+| 3     | research  | Single deep research model (O3 Deep Research, Perplexity Pro) | ~$2-5     |
+| 4     | consensus | Multiple models + synthesis                                   | ~$1-3     |
+| 5     | deep      | All deep research models + consolidation                      | ~$15-30   |
 
 ## Commands
 
@@ -108,6 +109,7 @@ export PERPLEXITY_API_KEY="pplx-..."
 ## Available Models
 
 ### OpenAI
+
 - `gpt-4o-mini` - Fast, cheap (level 1)
 - `gpt-4o` - Strong general purpose (level 2)
 - `gpt-4.5-preview` - Latest preview
@@ -116,20 +118,24 @@ export PERPLEXITY_API_KEY="pplx-..."
 - `o4-mini-deep-research-2025-06-26` - Smaller deep research
 
 ### Anthropic
+
 - `claude-3-5-haiku-latest` - Fast (level 1)
 - `claude-sonnet-4-20250514` - Balanced (level 2)
 - `claude-opus-4-20250514` - Most capable
 
 ### Google
+
 - `gemini-2.0-flash` - Fast (level 1)
 - `gemini-2.5-pro-preview-06-05` - Pro tier
 - `gemini-2.5-flash-preview-05-20` - Fast with capabilities
 
 ### xAI (Grok)
+
 - `grok-3` - Standard
 - `grok-3-fast` - Fast variant
 
 ### Perplexity
+
 - `sonar` - Fast search (level 1)
 - `sonar-pro` - Pro search with citations
 - `sonar-deep-research` - Full deep research
@@ -137,10 +143,13 @@ export PERPLEXITY_API_KEY="pplx-..."
 ## Output Formats
 
 ### Streaming (default)
+
 Tokens stream to stdout as they arrive. Progress info goes to stderr.
 
 ### JSON (`--json`)
+
 Full structured response including:
+
 - Model info
 - Content
 - Usage stats (tokens, cost estimate)
@@ -150,24 +159,28 @@ Full structured response including:
 ## Examples
 
 ### Get a second opinion
+
 ```bash
 # Ask another model about a design decision
 bun llm.ts ask "Is it better to use React Context or Zustand for global state?"
 ```
 
 ### Research a topic
+
 ```bash
 # Deep research with citations
 bun llm.ts --deep "How do modern TUI frameworks handle accessibility?"
 ```
 
 ### Build consensus
+
 ```bash
 # Get multiple perspectives on architecture
 bun llm.ts consensus "Monorepo vs polyrepo for a team of 10 developers?"
 ```
 
 ### Compare implementations
+
 ```bash
 # See how different models approach the same problem
 bun llm.ts compare --models gpt-4o,claude-sonnet-4 "Write a function to debounce API calls in TypeScript"

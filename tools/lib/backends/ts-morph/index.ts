@@ -1,7 +1,18 @@
 import { registerBackend, type RefactorBackend } from "../../backend"
 import { getProject, resetProject } from "./project"
-import { getSymbolAt, getReferences, findSymbols, findAllSymbols, computeNewName } from "./symbols"
-import { createRenameProposal, createBatchRenameProposal, checkConflicts, createBatchRenameProposalFiltered } from "./edits"
+import {
+  getSymbolAt,
+  getReferences,
+  findSymbols,
+  findAllSymbols,
+  computeNewName,
+} from "./symbols"
+import {
+  createRenameProposal,
+  createBatchRenameProposal,
+  checkConflicts,
+  createBatchRenameProposalFiltered,
+} from "./edits"
 
 // Re-export all functions for direct use
 export {

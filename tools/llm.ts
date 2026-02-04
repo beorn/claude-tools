@@ -15,9 +15,18 @@
 
 import { ask, research, compare } from "./lib/llm/research"
 import { retrieveResponse, pollForCompletion } from "./lib/llm/openai-deep"
-import { listPartials, findPartialByResponseId, cleanupPartials, type PartialFile } from "./lib/llm/persistence"
+import {
+  listPartials,
+  findPartialByResponseId,
+  cleanupPartials,
+  type PartialFile,
+} from "./lib/llm/persistence"
 import { consensus, deepConsensus } from "./lib/llm/consensus"
-import { getAvailableProviders, getProviderEnvVar, isProviderAvailable } from "./lib/llm/providers"
+import {
+  getAvailableProviders,
+  getProviderEnvVar,
+  isProviderAvailable,
+} from "./lib/llm/providers"
 import {
   MODELS,
   getModel,
@@ -159,7 +168,16 @@ function getQuestion(): string {
     // Check if previous arg was a flag that takes a value
     if (i > 0 && arr[i - 1]?.startsWith("--")) {
       const flagName = arr[i - 1]
-      if (["--model", "--models", "--provider", "--context", "--context-file"].includes(flagName!)) return false
+      if (
+        [
+          "--model",
+          "--models",
+          "--provider",
+          "--context",
+          "--context-file",
+        ].includes(flagName!)
+      )
+        return false
     }
     return true
   })
@@ -176,23 +194,30 @@ async function checkAndRecoverPartials(): Promise<boolean> {
   const partials = listPartials()
   if (partials.length === 0) return true
 
-  console.error(`📦 Found ${partials.length} incomplete response(s) - attempting recovery...\n`)
+  console.error(
+    `📦 Found ${partials.length} incomplete response(s) - attempting recovery...\n`,
+  )
 
   let recoveredAny = false
   for (const partial of partials) {
     const age = Date.now() - new Date(partial.metadata.startedAt).getTime()
-    const ageStr = age < 3600000
-      ? `${Math.round(age / 60000)}m ago`
-      : `${Math.round(age / 3600000)}h ago`
+    const ageStr =
+      age < 3600000
+        ? `${Math.round(age / 60000)}m ago`
+        : `${Math.round(age / 3600000)}h ago`
 
     console.error(`  ${partial.metadata.responseId}`)
-    console.error(`    Started: ${ageStr} | Topic: ${partial.metadata.topic.slice(0, 50)}...`)
+    console.error(
+      `    Started: ${ageStr} | Topic: ${partial.metadata.topic.slice(0, 50)}...`,
+    )
 
     // Try to retrieve from OpenAI
     if (partial.metadata.responseId) {
       const recovered = await retrieveResponse(partial.metadata.responseId)
       if (recovered.status === "completed" && recovered.content) {
-        console.error(`    ✅ Recovered from OpenAI (${recovered.content.length} chars)`)
+        console.error(
+          `    ✅ Recovered from OpenAI (${recovered.content.length} chars)`,
+        )
         console.error(`\n--- Recovered Response ---\n`)
         console.log(recovered.content)
         if (recovered.usage) {
@@ -203,25 +228,42 @@ async function checkAndRecoverPartials(): Promise<boolean> {
         completePartial(partial.path, { delete: true })
         console.error(`\n--- End Recovered Response ---\n`)
         recoveredAny = true
-      } else if (recovered.status === "failed" || recovered.status === "cancelled" || recovered.status === "expired") {
-        console.error(`    ❌ Response ${recovered.status} — removing stale partial`)
+      } else if (
+        recovered.status === "failed" ||
+        recovered.status === "cancelled" ||
+        recovered.status === "expired"
+      ) {
+        console.error(
+          `    ❌ Response ${recovered.status} — removing stale partial`,
+        )
         const { completePartial } = await import("./lib/llm/persistence")
         completePartial(partial.path, { delete: true })
-      } else if (recovered.status === "in_progress" || recovered.status === "queued") {
+      } else if (
+        recovered.status === "in_progress" ||
+        recovered.status === "queued"
+      ) {
         // Check if stale (>30 min for deep research is suspicious)
         const age = Date.now() - new Date(partial.metadata.startedAt).getTime()
         if (age > 30 * 60 * 1000) {
-          console.error(`    ⚠️  Still ${recovered.status} after ${Math.round(age / 60000)}m — likely stale, removing`)
+          console.error(
+            `    ⚠️  Still ${recovered.status} after ${Math.round(age / 60000)}m — likely stale, removing`,
+          )
           const { completePartial } = await import("./lib/llm/persistence")
           completePartial(partial.path, { delete: true })
         } else {
-          console.error(`    ⏳ Still ${recovered.status} on OpenAI (${Math.round(age / 60000)}m old)`)
-          console.error(`    Run 'llm recover ${partial.metadata.responseId}' to poll until complete`)
+          console.error(
+            `    ⏳ Still ${recovered.status} on OpenAI (${Math.round(age / 60000)}m old)`,
+          )
+          console.error(
+            `    Run 'llm recover ${partial.metadata.responseId}' to poll until complete`,
+          )
         }
       } else {
         console.error(`    ⚠️  Could not recover (status: ${recovered.status})`)
         if (partial.content.length > 0) {
-          console.error(`    Local partial has ${partial.content.length} chars saved`)
+          console.error(
+            `    Local partial has ${partial.content.length} chars saved`,
+          )
         }
       }
     }
@@ -251,13 +293,23 @@ async function checkAndRecoverPartials(): Promise<boolean> {
 // Keywords that trigger specific modes
 const KEYWORDS = [
   // Cheap/fast aliases
-  "quick", "cheap", "mini", "nano",
+  "quick",
+  "cheap",
+  "mini",
+  "nano",
   // Other modes
-  "opinion", "debate",
+  "opinion",
+  "debate",
   // Recovery
-  "recover", "partials",
+  "recover",
+  "partials",
   // Original commands (backwards compat)
-  "ask", "prepare", "consensus", "models", "compare", "update-pricing"
+  "ask",
+  "prepare",
+  "consensus",
+  "models",
+  "compare",
+  "update-pricing",
 ]
 
 async function main() {
@@ -294,14 +346,21 @@ async function main() {
         console.error("📚 Similar past queries:\n")
         for (const s of similar) {
           const relTime = formatRelativeTime(new Date(s.timestamp).getTime())
-          const preview = (s.user_content || "").slice(0, 100).replace(/\n/g, " ")
+          const preview = (s.user_content || "")
+            .slice(0, 100)
+            .replace(/\n/g, " ")
           console.error(`  ${relTime}: ${preview}...`)
         }
         console.error()
       }
-    } catch { /* History not indexed */ }
+    } catch {
+      /* History not indexed */
+    }
 
-    const { model, warning } = getBestAvailableModel("default", isProviderAvailable)
+    const { model, warning } = getBestAvailableModel(
+      "default",
+      isProviderAvailable,
+    )
     if (!model) error("No model available. " + (warning || ""))
     if (warning) console.error(`⚠️  ${warning}\n`)
 
@@ -315,14 +374,27 @@ async function main() {
 
     console.log()
     if (response.usage) {
-      const cost = estimateCost(model, response.usage.promptTokens, response.usage.completionTokens)
-      console.error(`\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`)
+      const cost = estimateCost(
+        model,
+        response.usage.promptTokens,
+        response.usage.completionTokens,
+      )
+      console.error(
+        `\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
+      )
     }
     process.exit(0)
   }
 
   if (isDeepFlag) {
-    const topic = isKeyword ? getQuestion() : args.filter(a => !a.startsWith("--") && !a.match(/^-[a-zA-Z]$/) && a !== "/deep").join(" ")
+    const topic = isKeyword
+      ? getQuestion()
+      : args
+          .filter(
+            (a) =>
+              !a.startsWith("--") && !a.match(/^-[a-zA-Z]$/) && a !== "/deep",
+          )
+          .join(" ")
     if (!topic) error("Usage: llm --deep <topic>")
 
     // Build context from various sources
@@ -353,11 +425,14 @@ async function main() {
 
         if (results.length > 0) {
           console.error("📚 Including context from session history...\n")
-          const historyContext = "Relevant context from previous sessions:\n\n" +
-            results.map(r => {
-              const role = r.type === "user" ? "User" : "Assistant"
-              return `[${role}]: ${r.snippet.replace(/>>>/g, "").replace(/<<</g, "")}`
-            }).join("\n\n")
+          const historyContext =
+            "Relevant context from previous sessions:\n\n" +
+            results
+              .map((r) => {
+                const role = r.type === "user" ? "User" : "Assistant"
+                return `[${role}]: ${r.snippet.replace(/>>>/g, "").replace(/<<</g, "")}`
+              })
+              .join("\n\n")
           contextParts.push(historyContext)
         }
       } catch {
@@ -365,7 +440,8 @@ async function main() {
       }
     }
 
-    const context = contextParts.length > 0 ? contextParts.join("\n\n---\n\n") : undefined
+    const context =
+      contextParts.length > 0 ? contextParts.join("\n\n---\n\n") : undefined
 
     const shouldContinue = await checkAndRecoverPartials()
     if (!shouldContinue) {
@@ -373,14 +449,19 @@ async function main() {
       process.exit(0)
     }
 
-    const { model: deepModel, warning: deepWarning } = getBestAvailableModel("deep", isProviderAvailable)
-    if (!deepModel) error("No deep research model available. " + (deepWarning || ""))
+    const { model: deepModel, warning: deepWarning } = getBestAvailableModel(
+      "deep",
+      isProviderAvailable,
+    )
+    if (!deepModel)
+      error("No deep research model available. " + (deepWarning || ""))
 
     console.error(`Deep research: ${topic}`)
     console.error(`Model: ${deepModel.displayName}`)
     console.error(`Estimated cost: ~$2-5\n`)
     if (deepWarning) console.error(`⚠️  ${deepWarning}\n`)
-    if (context) console.error(`📎 Context provided (${context.length} chars)\n`)
+    if (context)
+      console.error(`📎 Context provided (${context.length} chars)\n`)
 
     if (hasFlag("--dry-run")) {
       console.error("🔍 Dry run - would call deep research API")
@@ -391,7 +472,9 @@ async function main() {
     }
 
     if (!hasFlag("--yes") && !hasFlag("-y")) {
-      console.error("⚠️  This uses deep research models (~$2-5). Proceed? [Y/n] ")
+      console.error(
+        "⚠️  This uses deep research models (~$2-5). Proceed? [Y/n] ",
+      )
 
       const confirm = await new Promise<string>((resolve) => {
         process.stdin.setRawMode?.(true)
@@ -420,18 +503,34 @@ async function main() {
       console.error(`\nError: ${response.error}`)
     }
     if (response.usage) {
-      const cost = estimateCost(response.model, response.usage.promptTokens, response.usage.completionTokens)
-      console.error(`\n[${response.model.displayName}] ${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms`)
+      const cost = estimateCost(
+        response.model,
+        response.usage.promptTokens,
+        response.usage.completionTokens,
+      )
+      console.error(
+        `\n[${response.model.displayName}] ${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms`,
+      )
     }
     process.exit(0)
   }
 
   if (isAskFlag) {
     // /ask and --ask: run default (plain question) mode explicitly
-    const question = isKeyword ? getQuestion() : args.filter(a => !a.startsWith("--") && !a.match(/^-[a-zA-Z]$/) && a !== "/ask").join(" ")
+    const question = isKeyword
+      ? getQuestion()
+      : args
+          .filter(
+            (a) =>
+              !a.startsWith("--") && !a.match(/^-[a-zA-Z]$/) && a !== "/ask",
+          )
+          .join(" ")
     if (!question) error("Usage: llm --ask <question>")
 
-    const { model, warning } = getBestAvailableModel("default", isProviderAvailable)
+    const { model, warning } = getBestAvailableModel(
+      "default",
+      isProviderAvailable,
+    )
     if (!model) error("No model available. " + (warning || ""))
     if (warning) console.error(`⚠️  ${warning}\n`)
 
@@ -445,8 +544,14 @@ async function main() {
 
     console.log()
     if (askResponse.usage) {
-      const cost = estimateCost(model, askResponse.usage.promptTokens, askResponse.usage.completionTokens)
-      console.error(`\n[${askResponse.usage.totalTokens} tokens, ${formatCost(cost)}, ${askResponse.durationMs}ms]`)
+      const cost = estimateCost(
+        model,
+        askResponse.usage.promptTokens,
+        askResponse.usage.completionTokens,
+      )
+      console.error(
+        `\n[${askResponse.usage.totalTokens} tokens, ${formatCost(cost)}, ${askResponse.durationMs}ms]`,
+      )
     }
     process.exit(0)
   }
@@ -460,7 +565,10 @@ async function main() {
       const question = getQuestion()
       if (!question) error("Usage: llm quick <question>")
 
-      const { model, warning } = getBestAvailableModel("quick", isProviderAvailable)
+      const { model, warning } = getBestAvailableModel(
+        "quick",
+        isProviderAvailable,
+      )
       if (!model) error("No cheap model available. " + (warning || ""))
       if (warning) console.error(`⚠️  ${warning}\n`)
 
@@ -473,8 +581,14 @@ async function main() {
 
       console.log()
       if (response.usage) {
-        const cost = estimateCost(model, response.usage.promptTokens, response.usage.completionTokens)
-        console.error(`\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`)
+        const cost = estimateCost(
+          model,
+          response.usage.promptTokens,
+          response.usage.completionTokens,
+        )
+        console.error(
+          `\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
+        )
       }
       break
     }
@@ -483,8 +597,12 @@ async function main() {
       const question = getQuestion()
       if (!question) error("Usage: llm opinion <question>")
 
-      const { model, warning } = getBestAvailableModel("opinion", isProviderAvailable)
-      if (!model) error("No model available for second opinion. " + (warning || ""))
+      const { model, warning } = getBestAvailableModel(
+        "opinion",
+        isProviderAvailable,
+      )
+      if (!model)
+        error("No model available for second opinion. " + (warning || ""))
       if (warning) console.error(`⚠️  ${warning}\n`)
 
       console.error(`[Second opinion from ${model.displayName}]\n`)
@@ -497,8 +615,14 @@ async function main() {
 
       console.log()
       if (response.usage) {
-        const cost = estimateCost(model, response.usage.promptTokens, response.usage.completionTokens)
-        console.error(`\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`)
+        const cost = estimateCost(
+          model,
+          response.usage.promptTokens,
+          response.usage.completionTokens,
+        )
+        console.error(
+          `\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
+        )
       }
       break
     }
@@ -539,11 +663,14 @@ async function main() {
 
           if (results.length > 0) {
             console.error("📚 Including context from session history...\n")
-            const historyContext = "Relevant context from previous sessions:\n\n" +
-              results.map(r => {
-                const role = r.type === "user" ? "User" : "Assistant"
-                return `[${role}]: ${r.snippet.replace(/>>>/g, "").replace(/<<</g, "")}`
-              }).join("\n\n")
+            const historyContext =
+              "Relevant context from previous sessions:\n\n" +
+              results
+                .map((r) => {
+                  const role = r.type === "user" ? "User" : "Assistant"
+                  return `[${role}]: ${r.snippet.replace(/>>>/g, "").replace(/<<</g, "")}`
+                })
+                .join("\n\n")
             contextPartsDebate.push(historyContext)
           }
         } catch {
@@ -551,8 +678,13 @@ async function main() {
         }
       }
 
-      const contextDebate = contextPartsDebate.length > 0 ? contextPartsDebate.join("\n\n---\n\n") : undefined
-      const enrichedQuestion = contextDebate ? `${contextDebate}\n\n---\n\n${question}` : question
+      const contextDebate =
+        contextPartsDebate.length > 0
+          ? contextPartsDebate.join("\n\n---\n\n")
+          : undefined
+      const enrichedQuestion = contextDebate
+        ? `${contextDebate}\n\n---\n\n${question}`
+        : question
 
       // Check for incomplete partials and attempt auto-recovery
       const shouldContinueDebate = await checkAndRecoverPartials()
@@ -561,14 +693,19 @@ async function main() {
         process.exit(0)
       }
 
-      const { models: debateModels, warning: debateWarning } = getBestAvailableModels("debate", isProviderAvailable, 3)
-      if (debateModels.length < 2) error("Need at least 2 models for debate. " + (debateWarning || ""))
+      const { models: debateModels, warning: debateWarning } =
+        getBestAvailableModels("debate", isProviderAvailable, 3)
+      if (debateModels.length < 2)
+        error("Need at least 2 models for debate. " + (debateWarning || ""))
 
       console.error(`Multi-model debate: ${question}`)
-      console.error(`Models: ${debateModels.map(m => m.displayName).join(", ")}`)
+      console.error(
+        `Models: ${debateModels.map((m) => m.displayName).join(", ")}`,
+      )
       console.error(`Estimated cost: ~$1-3\n`)
       if (debateWarning) console.error(`⚠️  ${debateWarning}\n`)
-      if (contextDebate) console.error(`📎 Context provided (${contextDebate.length} chars)\n`)
+      if (contextDebate)
+        console.error(`📎 Context provided (${contextDebate.length} chars)\n`)
 
       // Dry run - show what would happen without calling API
       if (hasFlag("--dry-run")) {
@@ -576,13 +713,16 @@ async function main() {
         for (const m of debateModels) {
           console.error(`   • ${m.displayName} (${m.provider})`)
         }
-        if (contextDebate) console.error(`   Context: ${contextDebate.slice(0, 100)}...`)
+        if (contextDebate)
+          console.error(`   Context: ${contextDebate.slice(0, 100)}...`)
         process.exit(0)
       }
 
       // Skip confirmation with --yes or -y flag
       if (!hasFlag("--yes") && !hasFlag("-y")) {
-        console.error("⚠️  This queries multiple models (~$1-3). Proceed? [Y/n] ")
+        console.error(
+          "⚠️  This queries multiple models (~$1-3). Proceed? [Y/n] ",
+        )
 
         const confirm = await new Promise<string>((resolve) => {
           process.stdin.setRawMode?.(true)
@@ -602,11 +742,13 @@ async function main() {
 
       const result = await consensus({
         question: enrichedQuestion,
-        modelIds: debateModels.map(m => m.modelId),
+        modelIds: debateModels.map((m) => m.modelId),
         synthesize: true,
         onModelComplete: (response) => {
           if (response.error) {
-            console.error(`[${response.model.displayName}] Error: ${response.error}`)
+            console.error(
+              `[${response.model.displayName}] Error: ${response.error}`,
+            )
           } else {
             console.error(`[${response.model.displayName}] ✓`)
           }
@@ -618,22 +760,28 @@ async function main() {
 
       if (result.agreements?.length) {
         console.log("\n--- Agreements ---")
-        result.agreements.forEach(a => console.log(`• ${a}`))
+        result.agreements.forEach((a) => console.log(`• ${a}`))
       }
 
       if (result.disagreements?.length) {
         console.log("\n--- Disagreements ---")
-        result.disagreements.forEach(d => console.log(`• ${d}`))
+        result.disagreements.forEach((d) => console.log(`• ${d}`))
       }
 
       // Calculate total cost from all responses
       let totalCost = 0
       for (const resp of result.responses) {
         if (resp.usage) {
-          totalCost += estimateCost(resp.model, resp.usage.promptTokens, resp.usage.completionTokens)
+          totalCost += estimateCost(
+            resp.model,
+            resp.usage.promptTokens,
+            resp.usage.completionTokens,
+          )
         }
       }
-      console.error(`\n[${result.responses.length} models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`)
+      console.error(
+        `\n[${result.responses.length} models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`,
+      )
       break
     }
 
@@ -655,11 +803,19 @@ async function main() {
           if (similar.length > 0) {
             console.error("📚 Similar past queries found:\n")
             for (const s of similar) {
-              const relTime = formatRelativeTime(new Date(s.timestamp).getTime())
-              const preview = (s.user_content || "").slice(0, 120).replace(/\n/g, " ")
-              console.error(`  ${relTime}: ${preview}${(s.user_content?.length || 0) > 120 ? "..." : ""}`)
+              const relTime = formatRelativeTime(
+                new Date(s.timestamp).getTime(),
+              )
+              const preview = (s.user_content || "")
+                .slice(0, 120)
+                .replace(/\n/g, " ")
+              console.error(
+                `  ${relTime}: ${preview}${(s.user_content?.length || 0) > 120 ? "..." : ""}`,
+              )
               if (s.assistant_content) {
-                const answerPreview = s.assistant_content.slice(0, 100).replace(/\n/g, " ")
+                const answerPreview = s.assistant_content
+                  .slice(0, 100)
+                  .replace(/\n/g, " ")
                 console.error(`    → ${answerPreview}...`)
               }
               console.error()
@@ -681,7 +837,9 @@ async function main() {
         if (target) {
           const cost = estimateCost(target)
           const latency = target.typicalLatencyMs
-          console.error(`Target: ${target.displayName} (~${formatCost(cost)}/query, ~${formatLatency(latency ?? 5000)})\n`)
+          console.error(
+            `Target: ${target.displayName} (~${formatCost(cost)}/query, ~${formatLatency(latency ?? 5000)})\n`,
+          )
         }
       }
 
@@ -691,12 +849,14 @@ async function main() {
         {
           stream: true,
           onToken: (token) => process.stdout.write(token),
-        }
+        },
       )
 
       console.log()
       if (response.usage) {
-        console.error(`\n[Refinement cost: ${formatCost(estimateCost(cheapModel, response.usage.promptTokens, response.usage.completionTokens))}]`)
+        console.error(
+          `\n[Refinement cost: ${formatCost(estimateCost(cheapModel, response.usage.promptTokens, response.usage.completionTokens))}]`,
+        )
       }
       break
     }
@@ -711,7 +871,9 @@ async function main() {
       const withHistory = hasFlag("--with-history")
 
       // Get the model that will be used
-      let model = modelOverride ? getModel(modelOverride) : getModelsForLevel(level)[0]
+      let model = modelOverride
+        ? getModel(modelOverride)
+        : getModelsForLevel(level)[0]
       if (!model) error("No model available")
 
       // Build context from history if requested
@@ -724,11 +886,14 @@ async function main() {
 
           if (results.length > 0) {
             console.error("📚 Including context from session history...\n")
-            historyContext = "Relevant context from previous sessions:\n\n" +
-              results.map(r => {
-                const role = r.type === "user" ? "User" : "Assistant"
-                return `[${role}]: ${r.snippet.replace(/>>>/g, "").replace(/<<</g, "")}`
-              }).join("\n\n") +
+            historyContext =
+              "Relevant context from previous sessions:\n\n" +
+              results
+                .map((r) => {
+                  const role = r.type === "user" ? "User" : "Assistant"
+                  return `[${role}]: ${r.snippet.replace(/>>>/g, "").replace(/<<</g, "")}`
+                })
+                .join("\n\n") +
               "\n\n---\n\nNow answer the following question:\n"
           }
         } catch {
@@ -743,7 +908,9 @@ async function main() {
         console.error(`⚠️  ${model.displayName} is expensive:`)
         console.error(`   Estimated cost: ${formatCost(cost)}`)
         console.error(`   Estimated time: ${formatLatency(latency ?? 5000)}`)
-        console.error(`\nTip: Use 'prepare' to refine your question first, or --no-confirm to skip this.`)
+        console.error(
+          `\nTip: Use 'prepare' to refine your question first, or --no-confirm to skip this.`,
+        )
         console.error(`\nProceed? [y/N] `)
 
         // Read confirmation
@@ -765,14 +932,18 @@ async function main() {
 
       if (!jsonOutput) {
         const cost = estimateCost(model)
-        console.error(`Querying ${model.displayName} (~${formatCost(cost)})...\n`)
+        console.error(
+          `Querying ${model.displayName} (~${formatCost(cost)})...\n`,
+        )
       }
 
       const fullQuestion = historyContext + question
       const response = await ask(fullQuestion, level, {
         modelOverride,
         stream: !jsonOutput,
-        onToken: jsonOutput ? undefined : (token) => process.stdout.write(token),
+        onToken: jsonOutput
+          ? undefined
+          : (token) => process.stdout.write(token),
       })
 
       if (jsonOutput) {
@@ -785,8 +956,14 @@ async function main() {
           console.error(`\nError: ${response.error}`)
         }
         if (response.usage) {
-          const actualCost = estimateCost(model, response.usage.promptTokens, response.usage.completionTokens)
-          console.error(`\n[${response.model.displayName}] ${response.usage.totalTokens} tokens, ${formatCost(actualCost)}, ${response.durationMs}ms`)
+          const actualCost = estimateCost(
+            model,
+            response.usage.promptTokens,
+            response.usage.completionTokens,
+          )
+          console.error(
+            `\n[${response.model.displayName}] ${response.usage.totalTokens} tokens, ${formatCost(actualCost)}, ${response.durationMs}ms`,
+          )
         }
       }
       break
@@ -807,13 +984,19 @@ async function main() {
         question,
         modelIds,
         synthesize,
-        onModelComplete: jsonOutput ? undefined : (response) => {
-          if (response.error) {
-            console.error(`[${response.model.displayName}] Error: ${response.error}`)
-          } else {
-            console.error(`[${response.model.displayName}] Complete (${response.durationMs}ms)`)
-          }
-        },
+        onModelComplete: jsonOutput
+          ? undefined
+          : (response) => {
+              if (response.error) {
+                console.error(
+                  `[${response.model.displayName}] Error: ${response.error}`,
+                )
+              } else {
+                console.error(
+                  `[${response.model.displayName}] Complete (${response.durationMs}ms)`,
+                )
+              }
+            },
       })
 
       if (jsonOutput) {
@@ -824,12 +1007,12 @@ async function main() {
 
         if (result.agreements?.length) {
           console.log("\n--- Agreements ---")
-          result.agreements.forEach(a => console.log(`- ${a}`))
+          result.agreements.forEach((a) => console.log(`- ${a}`))
         }
 
         if (result.disagreements?.length) {
           console.log("\n--- Disagreements ---")
-          result.disagreements.forEach(d => console.log(`- ${d}`))
+          result.disagreements.forEach((d) => console.log(`- ${d}`))
         }
 
         if (result.confidence !== undefined) {
@@ -840,10 +1023,16 @@ async function main() {
         let totalCost = 0
         for (const resp of result.responses) {
           if (resp.usage) {
-            totalCost += estimateCost(resp.model, resp.usage.promptTokens, resp.usage.completionTokens)
+            totalCost += estimateCost(
+              resp.model,
+              resp.usage.promptTokens,
+              resp.usage.completionTokens,
+            )
           }
         }
-        console.error(`\n[${result.responses.length} models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`)
+        console.error(
+          `\n[${result.responses.length} models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`,
+        )
       }
       break
     }
@@ -857,13 +1046,19 @@ async function main() {
       }
 
       const result = await deepConsensus(topic, {
-        onModelComplete: jsonOutput ? undefined : (response) => {
-          if (response.error) {
-            console.error(`[${response.model.displayName}] Error: ${response.error}`)
-          } else {
-            console.error(`[${response.model.displayName}] Complete (${response.durationMs}ms)`)
-          }
-        },
+        onModelComplete: jsonOutput
+          ? undefined
+          : (response) => {
+              if (response.error) {
+                console.error(
+                  `[${response.model.displayName}] Error: ${response.error}`,
+                )
+              } else {
+                console.error(
+                  `[${response.model.displayName}] Complete (${response.durationMs}ms)`,
+                )
+              }
+            },
       })
 
       if (jsonOutput) {
@@ -874,26 +1069,34 @@ async function main() {
 
         if (result.agreements?.length) {
           console.log("\n--- Key Findings (Agreement) ---")
-          result.agreements.forEach(a => console.log(`- ${a}`))
+          result.agreements.forEach((a) => console.log(`- ${a}`))
         }
 
         if (result.disagreements?.length) {
           console.log("\n--- Varying Perspectives ---")
-          result.disagreements.forEach(d => console.log(`- ${d}`))
+          result.disagreements.forEach((d) => console.log(`- ${d}`))
         }
 
         if (result.confidence !== undefined) {
-          console.log(`\nResearch Confidence: ${Math.round(result.confidence * 100)}%`)
+          console.log(
+            `\nResearch Confidence: ${Math.round(result.confidence * 100)}%`,
+          )
         }
 
         // Calculate total cost from all responses
         let totalCost = 0
         for (const resp of result.responses) {
           if (resp.usage) {
-            totalCost += estimateCost(resp.model, resp.usage.promptTokens, resp.usage.completionTokens)
+            totalCost += estimateCost(
+              resp.model,
+              resp.usage.promptTokens,
+              resp.usage.completionTokens,
+            )
           }
         }
-        console.error(`\n[${result.responses.length} deep research models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`)
+        console.error(
+          `\n[${result.responses.length} deep research models, ${formatCost(totalCost)}, ${result.totalDurationMs}ms]`,
+        )
       }
       break
     }
@@ -905,53 +1108,67 @@ async function main() {
 
       let models = MODELS
       if (providerFilter) {
-        models = models.filter(m => m.provider === providerFilter)
+        models = models.filter((m) => m.provider === providerFilter)
       }
       if (availableOnly) {
-        models = models.filter(m => isProviderAvailable(m.provider))
+        models = models.filter((m) => isProviderAvailable(m.provider))
       }
 
       if (jsonOutput) {
-        output(models.map(m => ({
-          ...m,
-          available: isProviderAvailable(m.provider),
-          estimatedCostPerQuery: estimateCost(m),
-        })))
+        output(
+          models.map((m) => ({
+            ...m,
+            available: isProviderAvailable(m.provider),
+            estimatedCostPerQuery: estimateCost(m),
+          })),
+        )
       } else {
         // Group by provider
-        const byProvider = models.reduce((acc, m) => {
-          if (!acc[m.provider]) acc[m.provider] = []
-          acc[m.provider]!.push(m)
-          return acc
-        }, {} as Record<string, typeof models>)
+        const byProvider = models.reduce(
+          (acc, m) => {
+            if (!acc[m.provider]) acc[m.provider] = []
+            acc[m.provider]!.push(m)
+            return acc
+          },
+          {} as Record<string, typeof models>,
+        )
 
         const available = getAvailableProviders()
 
         for (const [provider, providerModels] of Object.entries(byProvider)) {
           const isAvail = available.includes(provider as any)
           const envVar = getProviderEnvVar(provider as any)
-          console.log(`\n${provider.toUpperCase()} ${isAvail ? "(available)" : `(set ${envVar})`}`)
+          console.log(
+            `\n${provider.toUpperCase()} ${isAvail ? "(available)" : `(set ${envVar})`}`,
+          )
 
           for (const m of providerModels) {
             if (showPricing) {
               const cost = estimateCost(m)
               const latency = formatLatency(m.typicalLatencyMs ?? 5000)
               const inOut = `$${m.inputPricePerM?.toFixed(2) ?? "?"} / $${m.outputPricePerM?.toFixed(2) ?? "?"}`
-              console.log(`  ${m.modelId.padEnd(35)} ${formatCost(cost).padEnd(8)} ${latency.padEnd(6)} ${inOut}`)
+              console.log(
+                `  ${m.modelId.padEnd(35)} ${formatCost(cost).padEnd(8)} ${latency.padEnd(6)} ${inOut}`,
+              )
             } else {
-              const flags = [
-                m.isDeepResearch ? "deep" : null,
-                m.costTier,
-              ].filter(Boolean).join(", ")
-              console.log(`  ${m.modelId.padEnd(35)} ${m.displayName.padEnd(25)} [${flags}]`)
+              const flags = [m.isDeepResearch ? "deep" : null, m.costTier]
+                .filter(Boolean)
+                .join(", ")
+              console.log(
+                `  ${m.modelId.padEnd(35)} ${m.displayName.padEnd(25)} [${flags}]`,
+              )
             }
           }
         }
 
         if (showPricing) {
           const days = getDaysSinceUpdate()
-          console.log(`\n(Pricing per 1M tokens: input / output. Query cost assumes ~500 in, ~1000 out tokens)`)
-          console.log(`(Cache age: ${days ?? "unknown"} days. Run 'update-pricing' to refresh.)`)
+          console.log(
+            `\n(Pricing per 1M tokens: input / output. Query cost assumes ~500 in, ~1000 out tokens)`,
+          )
+          console.log(
+            `(Cache age: ${days ?? "unknown"} days. Run 'update-pricing' to refresh.)`,
+          )
         }
       }
       break
@@ -963,7 +1180,9 @@ async function main() {
 
       const modelIds = getArg("--models")?.split(",")
       if (!modelIds || modelIds.length < 2) {
-        error("compare requires --models with at least 2 comma-separated model IDs")
+        error(
+          "compare requires --models with at least 2 comma-separated model IDs",
+        )
       }
 
       if (!jsonOutput) {
@@ -978,12 +1197,18 @@ async function main() {
         let totalCost = 0
         for (const response of responses) {
           const cost = response.usage
-            ? estimateCost(response.model, response.usage.promptTokens, response.usage.completionTokens)
+            ? estimateCost(
+                response.model,
+                response.usage.promptTokens,
+                response.usage.completionTokens,
+              )
             : 0
           totalCost += cost
 
           console.log(`\n${"=".repeat(60)}`)
-          console.log(`${response.model.displayName} (${formatCost(cost)}, ${response.durationMs}ms)`)
+          console.log(
+            `${response.model.displayName} (${formatCost(cost)}, ${response.durationMs}ms)`,
+          )
           console.log("=".repeat(60))
 
           if (response.error) {
@@ -992,7 +1217,9 @@ async function main() {
             console.log(response.content)
           }
         }
-        console.error(`\n[${responses.length} models, ${formatCost(totalCost)} total]`)
+        console.error(
+          `\n[${responses.length} models, ${formatCost(totalCost)} total]`,
+        )
       }
       break
     }
@@ -1037,12 +1264,16 @@ async function main() {
         // First check local partials
         const localPartial = findPartialByResponseId(responseId)
         if (localPartial) {
-          console.error(`Found local partial (${localPartial.content.length} chars):\n`)
+          console.error(
+            `Found local partial (${localPartial.content.length} chars):\n`,
+          )
           console.log(localPartial.content)
 
           if (!localPartial.metadata.completedAt) {
             console.error("\n---")
-            console.error("This response was interrupted. Attempting to retrieve from OpenAI...")
+            console.error(
+              "This response was interrupted. Attempting to retrieve from OpenAI...",
+            )
           }
         }
 
@@ -1053,7 +1284,9 @@ async function main() {
           if (!localPartial) {
             error(`Failed to retrieve: ${initial.error}`)
           }
-          console.error(`\n⚠️  Could not retrieve from OpenAI: ${initial.error}`)
+          console.error(
+            `\n⚠️  Could not retrieve from OpenAI: ${initial.error}`,
+          )
         } else if (initial.status === "completed") {
           console.error("\nFull response from OpenAI:\n")
           console.log(initial.content)
@@ -1065,13 +1298,18 @@ async function main() {
             const { completePartial } = await import("./lib/llm/persistence")
             completePartial(localPartial.path, { delete: true })
           }
-        } else if (initial.status === "in_progress" || initial.status === "queued") {
+        } else if (
+          initial.status === "in_progress" ||
+          initial.status === "queued"
+        ) {
           console.error(`\nStatus: ${initial.status} — polling every 5s...`)
           const result = await pollForCompletion(responseId, {
             intervalMs: 5_000,
             maxAttempts: 180,
             onProgress: (status, elapsed) => {
-              process.stderr.write(`\r⏳ ${status} (${Math.round(elapsed / 1000)}s elapsed)`)
+              process.stderr.write(
+                `\r⏳ ${status} (${Math.round(elapsed / 1000)}s elapsed)`,
+              )
             },
           })
           process.stderr.write("\n")
@@ -1088,9 +1326,15 @@ async function main() {
               completePartial(localPartial.path, { delete: true })
             }
           } else {
-            console.error(`Response ${result.status}${result.error ? `: ${result.error}` : ""}`)
+            console.error(
+              `Response ${result.status}${result.error ? `: ${result.error}` : ""}`,
+            )
           }
-        } else if (initial.status === "failed" || initial.status === "cancelled" || initial.status === "expired") {
+        } else if (
+          initial.status === "failed" ||
+          initial.status === "cancelled" ||
+          initial.status === "expired"
+        ) {
           console.error(`\nResponse ${initial.status}`)
           // Clean up stale partial file for terminal states
           if (localPartial) {
@@ -1109,7 +1353,9 @@ async function main() {
 
       if (partials.length === 0) {
         console.error("No incomplete responses found.")
-        console.error("\nPartial responses are saved automatically during deep research calls.")
+        console.error(
+          "\nPartial responses are saved automatically during deep research calls.",
+        )
         console.error("If interrupted, they appear here for recovery.")
         break
       }
@@ -1118,11 +1364,12 @@ async function main() {
 
       for (const partial of partials) {
         const age = Date.now() - new Date(partial.metadata.startedAt).getTime()
-        const ageStr = age < 3600000
-          ? `${Math.round(age / 60000)}m ago`
-          : age < 86400000
-            ? `${Math.round(age / 3600000)}h ago`
-            : `${Math.round(age / 86400000)}d ago`
+        const ageStr =
+          age < 3600000
+            ? `${Math.round(age / 60000)}m ago`
+            : age < 86400000
+              ? `${Math.round(age / 3600000)}h ago`
+              : `${Math.round(age / 86400000)}d ago`
 
         const isStale = age > 30 * 60 * 1000 // >30 min
         const status = partial.metadata.completedAt
@@ -1136,7 +1383,9 @@ async function main() {
         console.error(`    ${status} | ${ageStr} | ${partial.metadata.model}`)
         console.error(`    Topic: ${partial.metadata.topic.slice(0, 60)}...`)
         if (partial.content.length > 0) {
-          console.error(`    Content: ${preview}${partial.content.length > 100 ? "..." : ""}`)
+          console.error(
+            `    Content: ${preview}${partial.content.length > 100 ? "..." : ""}`,
+          )
         }
         console.error(`    (${partial.content.length} chars saved)`)
         console.error()
