@@ -186,6 +186,46 @@ bun llm.ts consensus "Monorepo vs polyrepo for a team of 10 developers?"
 bun llm.ts compare --models gpt-4o,claude-sonnet-4 "Write a function to debounce API calls in TypeScript"
 ```
 
+## Agent Usage: Background & Async Patterns
+
+When an AI agent needs LLM results but doesn't want to block its main context:
+
+### Quick queries (~$0.02) — run foreground
+
+Fast enough to run synchronously. Just use Bash:
+
+```bash
+bun llm "question"
+```
+
+### Deep research (~$2-5) — run in background, wait with TaskOutput
+
+Deep research takes 2-15 minutes. **Never poll output files manually** (sleep + read loops waste turns). Use the Task tool with `run_in_background=true`, then `TaskOutput` with `block=true`:
+
+```
+# Step 1: Launch background task
+Task(subagent_type="Bash", run_in_background=true,
+     prompt='bun llm --deep -y "topic"')
+→ Returns task_id
+
+# Step 2: Do other work while it runs...
+
+# Step 3: Block-wait for result (up to 10 min)
+TaskOutput(task_id=<id>, block=true, timeout=600000)
+```
+
+**Anti-pattern** — do NOT do this:
+```
+# BAD: Manual polling wastes 5+ turns on sleep/read cycles
+Bash("sleep 30 && wc -l /tmp/output")
+Read("/tmp/output")
+Bash("sleep 30 && wc -l /tmp/output")  # still not done...
+```
+
+### Debate/consensus (~$1-3) — run foreground or background
+
+Similar to deep research timing-wise. Use the same `TaskOutput` pattern for background execution.
+
 ## Trigger Phrases
 
 - "ask another model"

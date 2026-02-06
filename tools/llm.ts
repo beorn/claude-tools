@@ -11,6 +11,11 @@
  * Advanced commands (backwards compat):
  *   llm ask --model X "q"       Specific model
  *   llm models --pricing        List models with costs
+ *
+ * Agent integration:
+ *   Deep research takes 2-15 min. For background execution, use
+ *   Task(run_in_background=true) + TaskOutput(block=true, timeout=600000).
+ *   Never poll output files manually. See skills/llm/SKILL.md "Agent Usage".
  */
 
 import { ask, research, compare } from "./lib/llm/research"
