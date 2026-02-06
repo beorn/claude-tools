@@ -12,10 +12,14 @@
  *   llm ask --model X "q"       Specific model
  *   llm models --pricing        List models with costs
  *
+ * Output:
+ *   By default, response is written to /tmp/llm-result-*.txt and the
+ *   file path is printed to stdout. Use --output - for streaming to stdout.
+ *
  * Agent integration:
- *   Deep research takes 2-15 min. For background execution, use
- *   Task(run_in_background=true) + TaskOutput(block=true, timeout=600000).
- *   Never poll output files manually. See skills/llm/SKILL.md "Agent Usage".
+ *   Default file output avoids stdout truncation. Read the file path from
+ *   stdout, then read the file for full content. Deep research takes 2-15 min.
+ *   See skills/llm/SKILL.md "Agent Usage".
  */
 
 import { ask, research, compare } from "./lib/llm/research"
@@ -62,6 +66,21 @@ import {
 
 // Initialize pricing on startup
 initializePricing()
+
+// Clean up stale output files (>7 days old)
+import { readdirSync, statSync, unlinkSync } from "fs"
+try {
+  const maxAge = 7 * 24 * 60 * 60 * 1000
+  const now = Date.now()
+  for (const f of readdirSync("/tmp")) {
+    if (f.startsWith("llm-") && f.endsWith(".txt")) {
+      const path = `/tmp/${f}`
+      try {
+        if (now - statSync(path).mtimeMs > maxAge) unlinkSync(path)
+      } catch {}
+    }
+  }
+} catch {}
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -119,6 +138,8 @@ FLAGS
   --with-history         Include relevant context from session history
   --context <text>       Provide explicit context (prepended to topic)
   --context-file <path>  Read context from a file
+  --output <file>        Write response to specific file (default: auto /tmp/llm-result-*.txt)
+  --output -             Stream response to stdout instead of writing to file
 
 FEATURES
   • Auto-recovery: Checks for interrupted responses and recovers them
@@ -126,6 +147,8 @@ FEATURES
   • Cost confirmation for expensive queries (deep, debate)
   • Streams responses in real-time
   • Persistence: Saves progress to disk during streaming
+  • File output: Response written to file by default (path printed to stdout)
+  • Use --output - for classic streaming to stdout
 
 PROVIDERS
   ${available.includes("openai" as any) ? "✓" : "○"} OpenAI      ${available.includes("openai" as any) ? "ready" : "set OPENAI_API_KEY"}
@@ -162,6 +185,34 @@ function hasFlag(name: string): boolean {
   return args.includes(name)
 }
 
+const outputArg = getArg("--output")
+const stdoutMode = outputArg === "-"
+const sessionTag = process.env.CLAUDE_SESSION_ID?.slice(0, 8) ?? "manual"
+const outputFile = stdoutMode
+  ? null
+  : (outputArg ??
+    `/tmp/llm-${sessionTag}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.txt`)
+
+/** Write token during streaming — stderr in file mode, stdout in --output - mode */
+function streamToken(token: string): void {
+  if (stdoutMode) {
+    process.stdout.write(token)
+  } else {
+    process.stderr.write(token)
+  }
+}
+
+/** After response completes: write file + print path to stdout, or newline for stdout mode */
+function finalizeOutput(content: string): void {
+  if (outputFile) {
+    Bun.write(outputFile, content)
+    process.stderr.write("\n") // newline after streamed progress on stderr
+    console.log(outputFile)
+  } else {
+    console.log() // trailing newline after streamed content on stdout
+  }
+}
+
 function getQuestion(): string {
   // Find the question (first non-flag argument after command)
   const nonFlags = args.slice(1).filter((a, i, arr) => {
@@ -180,6 +231,7 @@ function getQuestion(): string {
           "--provider",
           "--context",
           "--context-file",
+          "--output",
         ].includes(flagName!)
       ) {
         return false
@@ -375,10 +427,10 @@ async function main() {
     const response = await ask(question, "standard", {
       modelOverride: model.modelId,
       stream: true,
-      onToken: (token) => process.stdout.write(token),
+      onToken: streamToken,
     })
 
-    console.log()
+    if (response.content) finalizeOutput(response.content)
     if (response.usage) {
       const cost = estimateCost(
         model,
@@ -386,7 +438,7 @@ async function main() {
         response.usage.completionTokens,
       )
       console.error(
-        `\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
+        `[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
       )
     }
     process.exit(0)
@@ -396,10 +448,27 @@ async function main() {
     const topic = isKeyword
       ? getQuestion()
       : args
-          .filter(
-            (a) =>
-              !a.startsWith("--") && !a.match(/^-[a-zA-Z]$/) && a !== "/deep",
-          )
+          .filter((a, i, arr) => {
+            if (a.startsWith("--")) return false
+            if (a.match(/^-[a-zA-Z]$/)) return false
+            if (a === "/deep") return false
+            if (i > 0 && arr[i - 1]?.startsWith("--")) {
+              const flagName = arr[i - 1]
+              if (
+                [
+                  "--model",
+                  "--models",
+                  "--provider",
+                  "--context",
+                  "--context-file",
+                  "--output",
+                ].includes(flagName!)
+              ) {
+                return false
+              }
+            }
+            return true
+          })
           .join(" ")
     if (!topic) error("Usage: llm --deep <topic>")
 
@@ -503,12 +572,12 @@ async function main() {
     const response = await research(topic, {
       context,
       stream: true,
-      onToken: (token) => process.stdout.write(token),
+      onToken: streamToken,
     })
 
-    console.log()
+    if (response.content) finalizeOutput(response.content)
     if (response.error) {
-      console.error(`\nError: ${response.error}`)
+      console.error(`Error: ${response.error}`)
     }
     if (response.usage) {
       const cost = estimateCost(
@@ -517,7 +586,7 @@ async function main() {
         response.usage.completionTokens,
       )
       console.error(
-        `\n[${response.model.displayName}] ${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms`,
+        `[${response.model.displayName}] ${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms`,
       )
     }
     process.exit(0)
@@ -528,10 +597,27 @@ async function main() {
     const question = isKeyword
       ? getQuestion()
       : args
-          .filter(
-            (a) =>
-              !a.startsWith("--") && !a.match(/^-[a-zA-Z]$/) && a !== "/ask",
-          )
+          .filter((a, i, arr) => {
+            if (a.startsWith("--")) return false
+            if (a.match(/^-[a-zA-Z]$/)) return false
+            if (a === "/ask") return false
+            if (i > 0 && arr[i - 1]?.startsWith("--")) {
+              const flagName = arr[i - 1]
+              if (
+                [
+                  "--model",
+                  "--models",
+                  "--provider",
+                  "--context",
+                  "--context-file",
+                  "--output",
+                ].includes(flagName!)
+              ) {
+                return false
+              }
+            }
+            return true
+          })
           .join(" ")
     if (!question) error("Usage: llm --ask <question>")
 
@@ -547,10 +633,10 @@ async function main() {
     const askResponse = await ask(question, "standard", {
       modelOverride: model.modelId,
       stream: true,
-      onToken: (token) => process.stdout.write(token),
+      onToken: streamToken,
     })
 
-    console.log()
+    if (askResponse.content) finalizeOutput(askResponse.content)
     if (askResponse.usage) {
       const cost = estimateCost(
         model,
@@ -558,7 +644,7 @@ async function main() {
         askResponse.usage.completionTokens,
       )
       console.error(
-        `\n[${askResponse.usage.totalTokens} tokens, ${formatCost(cost)}, ${askResponse.durationMs}ms]`,
+        `[${askResponse.usage.totalTokens} tokens, ${formatCost(cost)}, ${askResponse.durationMs}ms]`,
       )
     }
     process.exit(0)
@@ -584,10 +670,10 @@ async function main() {
 
       const response = await ask(question, "quick", {
         stream: true,
-        onToken: (token) => process.stdout.write(token),
+        onToken: streamToken,
       })
 
-      console.log()
+      if (response.content) finalizeOutput(response.content)
       if (response.usage) {
         const cost = estimateCost(
           model,
@@ -595,7 +681,7 @@ async function main() {
           response.usage.completionTokens,
         )
         console.error(
-          `\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
+          `[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
         )
       }
       break
@@ -619,10 +705,10 @@ async function main() {
       const response = await ask(question, "standard", {
         modelOverride: model.modelId,
         stream: true,
-        onToken: (token) => process.stdout.write(token),
+        onToken: streamToken,
       })
 
-      console.log()
+      if (response.content) finalizeOutput(response.content)
       if (response.usage) {
         const cost = estimateCost(
           model,
@@ -630,7 +716,7 @@ async function main() {
           response.usage.completionTokens,
         )
         console.error(
-          `\n[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
+          `[${response.usage.totalTokens} tokens, ${formatCost(cost)}, ${response.durationMs}ms]`,
         )
       }
       break
@@ -767,18 +853,25 @@ async function main() {
         },
       })
 
-      console.log("\n--- Synthesis ---\n")
-      console.log(result.synthesis || "(No synthesis)")
-
+      // Build full debate output
+      const parts: string[] = []
+      parts.push("--- Synthesis ---\n")
+      parts.push(result.synthesis || "(No synthesis)")
       if (result.agreements?.length) {
-        console.log("\n--- Agreements ---")
-        result.agreements.forEach((a) => console.log(`• ${a}`))
+        parts.push("\n--- Agreements ---")
+        result.agreements.forEach((a) => parts.push(`• ${a}`))
       }
-
       if (result.disagreements?.length) {
-        console.log("\n--- Disagreements ---")
-        result.disagreements.forEach((d) => console.log(`• ${d}`))
+        parts.push("\n--- Disagreements ---")
+        result.disagreements.forEach((d) => parts.push(`• ${d}`))
       }
+      const debateContent = parts.join("\n")
+
+      // In file mode, also print to stderr for progress visibility
+      if (!stdoutMode) {
+        console.error("\n" + debateContent)
+      }
+      finalizeOutput(debateContent)
 
       // Calculate total cost from all responses
       let totalCost = 0

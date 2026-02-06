@@ -188,14 +188,15 @@ bun llm.ts compare --models gpt-4o,claude-sonnet-4 "Write a function to debounce
 
 ## Agent Usage: Background & Async Patterns
 
-When an AI agent needs LLM results but doesn't want to block its main context:
+By default, `bun llm` writes the response to a file and prints the file path to stdout. Read the file with `Read` tool. Stale files (>7 days) are auto-cleaned on next run. Use `--output -` for classic streaming to stdout.
 
 ### Quick queries (~$0.02) — run foreground
 
-Fast enough to run synchronously. Just use Bash:
+Fast enough to run synchronously. Stdout contains the file path:
 
 ```bash
 bun llm "question"
+# stdout = /tmp/llm-result-*.txt — Read it, then rm
 ```
 
 ### Deep research (~$2-5) — run in background, wait with TaskOutput
@@ -210,8 +211,9 @@ Task(subagent_type="Bash", run_in_background=true,
 
 # Step 2: Do other work while it runs...
 
-# Step 3: Block-wait for result (up to 10 min)
+# Step 3: Block-wait for completion (up to 10 min)
 TaskOutput(task_id=<id>, block=true, timeout=600000)
+# stdout contains the file path — Read it
 ```
 
 **Anti-pattern** — do NOT do this:
