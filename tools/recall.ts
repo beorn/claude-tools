@@ -298,8 +298,7 @@ program
   .version("1.0.0")
   .exitOverride() // Throw instead of process.exit so we can catch and log
   .configureOutput({
-    writeErr: (str) =>
-      console.error(`[recall commander] ${str.trimEnd()}`),
+    writeErr: (str) => console.error(`[recall commander] ${str.trimEnd()}`),
   })
 
 // Search subcommand (also the default when no subcommand matches)

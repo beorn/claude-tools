@@ -20,6 +20,7 @@ export interface TtydServerOptions {
 export interface TtydServer {
   url: string
   port: number
+  readonly isRunning: boolean
   ready: Promise<void>
   close(): Promise<void>
   [Symbol.asyncDispose](): Promise<void>
@@ -99,6 +100,9 @@ export function createTTY(options: TtydServerOptions): TtydServer {
     },
     get port() {
       return port
+    },
+    get isRunning() {
+      return process !== null && process.exitCode === null
     },
     ready,
     close,

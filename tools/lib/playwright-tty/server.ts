@@ -1,5 +1,10 @@
 /**
  * Playwright TTY MCP Backend - manages sessions and implements tool handlers
+ *
+ * Robustness features:
+ * - Per-tool timeouts prevent hanging on stale sessions
+ * - Browser auto-recovery on disconnect
+ * - Dead session auto-cleanup
  */
 
 import type { Browser } from "playwright"
@@ -33,24 +38,78 @@ import {
 } from "./types.js"
 import { writeFile } from "fs/promises"
 
+// Per-tool timeout in ms. Prevents any tool from hanging forever.
+// tty_start, tty_reset, tty_wait derive timeout from their args (see callTool).
+const TOOL_TIMEOUTS: Record<string, number> = {
+  tty_list: 2_000,
+  tty_stop: 10_000,
+  tty_press: 5_000,
+  tty_type: 5_000,
+  tty_screenshot: 10_000,
+  tty_text: 5_000,
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`${label} timed out after ${ms}ms`)),
+        ms,
+      )
+    }),
+  ]).finally(() => clearTimeout(timer!))
+}
+
 function generateId(): string {
   return Math.random().toString(36).slice(2, 10)
 }
+
+type ToolOutput =
+  | TtyStartOutput
+  | TtyResetOutput
+  | TtyListOutput
+  | TtyStopOutput
+  | TtyPressOutput
+  | TtyTypeOutput
+  | TtyScreenshotOutput
+  | TtyTextOutput
+  | TtyWaitOutput
 
 export class PlaywrightTtyBackend {
   private sessions = new Map<string, TtySession>()
   private browser: Browser | null = null
 
   async ensureBrowser(): Promise<Browser> {
+    // Auto-recover if browser disconnected
+    if (this.browser && !this.browser.isConnected()) {
+      this.browser = null
+    }
     if (!this.browser) {
-      this.browser = await chromium.launch({ headless: true })
+      const launching = chromium.launch({ headless: true })
+      try {
+        this.browser = await withTimeout(launching, 15_000, "chromium.launch")
+      } catch (err) {
+        // If launch eventually succeeds after timeout, close it to avoid leaks
+        launching.then((b) => b.close()).catch(() => {})
+        throw err
+      }
     }
     return this.browser
   }
 
   async closeBrowser(): Promise<void> {
     if (this.browser) {
-      await this.browser.close()
+      try {
+        await this.browser.close()
+      } catch {
+        // Browser may already be disconnected
+      }
       this.browser = null
     }
   }
@@ -58,25 +117,67 @@ export class PlaywrightTtyBackend {
   getSession(sessionId: string): TtySession {
     const session = this.sessions.get(sessionId)
     if (!session) {
-      throw new Error(`Session not found: ${sessionId}`)
+      const active = Array.from(this.sessions.keys()).join(", ") || "none"
+      throw new Error(
+        `Session not found: ${sessionId}. Active sessions: ${active}`,
+      )
+    }
+    // Auto-remove dead sessions
+    if (!session.alive) {
+      session.close().catch(() => {})
+      this.sessions.delete(sessionId)
+      throw new Error(
+        `Session ${sessionId} is dead (page closed or process exited). It has been removed.`,
+      )
     }
     return session
   }
 
-  async callTool(
-    name: string,
-    args: unknown,
-  ): Promise<
-    | TtyStartOutput
-    | TtyResetOutput
-    | TtyListOutput
-    | TtyStopOutput
-    | TtyPressOutput
-    | TtyTypeOutput
-    | TtyScreenshotOutput
-    | TtyTextOutput
-    | TtyWaitOutput
-  > {
+  /** Remove sessions whose page or process has died */
+  private cleanupStaleSessions(): void {
+    for (const [id, session] of this.sessions) {
+      if (!session.alive) {
+        session.close().catch(() => {})
+        this.sessions.delete(id)
+      }
+    }
+  }
+
+  async callTool(name: string, args: unknown): Promise<ToolOutput> {
+    // Determine timeout for this tool
+    let timeoutMs = TOOL_TIMEOUTS[name] ?? 10_000
+
+    // Tools with user-specified timeouts: derive outer timeout from args
+    if (name === "tty_start") {
+      try {
+        const parsed = TtyStartInputSchema.parse(args)
+        timeoutMs = parsed.timeout + 10_000 // user timeout + overhead for browser/ttyd/nav
+      } catch {
+        timeoutMs = 15_000
+      }
+    } else if (name === "tty_reset") {
+      timeoutMs = 15_000
+    } else if (name === "tty_wait") {
+      try {
+        const parsed = TtyWaitInputSchema.parse(args)
+        timeoutMs = parsed.timeout + 5_000
+      } catch {
+        timeoutMs = 35_000
+      }
+    }
+
+    try {
+      return await withTimeout(this.handleTool(name, args), timeoutMs, name)
+    } catch (err) {
+      // On timeout, clean up stale sessions so future calls don't hit dead sessions
+      if (err instanceof Error && err.message.includes("timed out")) {
+        this.cleanupStaleSessions()
+      }
+      throw err
+    }
+  }
+
+  private async handleTool(name: string, args: unknown): Promise<ToolOutput> {
     switch (name) {
       case "tty_start": {
         const input = TtyStartInputSchema.parse(args)
@@ -92,6 +193,7 @@ export class PlaywrightTtyBackend {
               env: input.env as Record<string, string> | undefined,
               viewport: input.viewport,
               waitFor: input.waitFor,
+              timeout: input.timeout,
             })
             this.sessions.set(id, session)
             return { sessionId: id, url: session.url }
@@ -118,6 +220,8 @@ export class PlaywrightTtyBackend {
 
       case "tty_list": {
         TtyListInputSchema.parse(args)
+        // Clean up dead sessions first
+        this.cleanupStaleSessions()
         const sessions = Array.from(this.sessions.values()).map((s) => ({
           id: s.id,
           url: s.url,
@@ -211,7 +315,11 @@ export class PlaywrightTtyBackend {
   async shutdown(): Promise<void> {
     // Close all sessions
     for (const session of this.sessions.values()) {
-      await session.close()
+      try {
+        await session.close()
+      } catch {
+        // Best-effort cleanup
+      }
     }
     this.sessions.clear()
 

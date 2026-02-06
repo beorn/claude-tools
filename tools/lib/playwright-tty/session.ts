@@ -23,6 +23,7 @@ export interface TtySession {
   createdAt: Date
   page: Page
   browser: Browser
+  readonly alive: boolean
 
   reset(options?: {
     command?: string[]
@@ -54,7 +55,7 @@ export async function createSession(
   const context = await browser.newContext()
   const page = await context.newPage()
   await page.setViewportSize(viewport)
-  await page.goto(ttyd.url)
+  await page.goto(ttyd.url, { timeout: 10_000 })
 
   // Wait for initial content
   await performWait(page, waitFor, timeout)
@@ -77,7 +78,7 @@ export async function createSession(
     await ttyd.ready
 
     // Navigate to new URL
-    await page.goto(ttyd.url)
+    await page.goto(ttyd.url, { timeout: 10_000 })
     await performWait(page, waitFor, timeout)
 
     currentCommand = newCommand
@@ -96,6 +97,9 @@ export async function createSession(
     },
     get command() {
       return currentCommand
+    },
+    get alive() {
+      return !page.isClosed() && ttyd.isRunning
     },
     createdAt,
     page,
