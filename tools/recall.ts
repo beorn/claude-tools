@@ -296,6 +296,11 @@ program
   .name("recall")
   .description("Search Claude Code session history with LLM synthesis")
   .version("1.0.0")
+  .exitOverride() // Throw instead of process.exit so we can catch and log
+  .configureOutput({
+    writeErr: (str) =>
+      console.error(`[recall commander] ${str.trimEnd()}`),
+  })
 
 // Search subcommand (also the default when no subcommand matches)
 const searchCmd = program
@@ -344,29 +349,46 @@ program
   .description("Run recall for a hook context (reads prompt from stdin JSON)")
   .action(async () => {
     const startTime = Date.now()
-    const stdin = await readStdin()
-    const input = JSON.parse(stdin) as { prompt?: string }
-    const prompt = input.prompt
-    if (!prompt) {
+    try {
+      const stdin = await readStdin()
+      let input: { prompt?: string }
+      try {
+        input = JSON.parse(stdin) as { prompt?: string }
+      } catch (e) {
+        console.error(
+          `[recall hook] FATAL: invalid JSON on stdin (${Date.now() - startTime}ms): ${String(e)}\nstdin was: ${stdin.slice(0, 200)}`,
+        )
+        process.exit(1)
+        return
+      }
+      const prompt = input.prompt
+      if (!prompt) {
+        console.error(
+          `[recall hook] no prompt in stdin (${Date.now() - startTime}ms)`,
+        )
+        process.exit(0)
+      }
+      const result = await hookRecall(prompt)
+      const elapsed = Date.now() - startTime
+      if (result.skipped) {
+        console.error(
+          `[recall hook] skipped: ${result.reason} (${elapsed}ms) prompt="${prompt.slice(0, 60)}"`,
+        )
+        process.exit(0)
+      }
+      const synthLen =
+        result.hookOutput?.hookSpecificOutput.additionalContext.length ?? 0
       console.error(
-        `[recall hook] no prompt in stdin (${Date.now() - startTime}ms)`,
+        `[recall hook] OK: ${synthLen} chars synthesis (${elapsed}ms) prompt="${prompt.slice(0, 60)}"`,
       )
-      process.exit(0)
-    }
-    const result = await hookRecall(prompt)
-    const elapsed = Date.now() - startTime
-    if (result.skipped) {
+      console.log(JSON.stringify(result.hookOutput))
+    } catch (e) {
+      const elapsed = Date.now() - startTime
       console.error(
-        `[recall hook] skipped: ${result.reason} (${elapsed}ms) prompt="${prompt.slice(0, 60)}"`,
+        `[recall hook] FATAL: unhandled error (${elapsed}ms): ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`,
       )
-      process.exit(0)
+      process.exit(1)
     }
-    const synthLen =
-      result.hookOutput?.hookSpecificOutput.additionalContext.length ?? 0
-    console.error(
-      `[recall hook] OK: ${synthLen} chars synthesis (${elapsed}ms) prompt="${prompt.slice(0, 60)}"`,
-    )
-    console.log(JSON.stringify(result.hookOutput))
   })
 
 // Remember subcommand — called by SessionEnd hook
@@ -379,44 +401,61 @@ program
   .option("--json", "Output as JSON")
   .action(async (opts: { json?: boolean }) => {
     const startTime = Date.now()
-    const stdin = await readStdin()
-    const input = JSON.parse(stdin) as {
-      transcript_path?: string
-      session_id?: string
-    }
+    try {
+      const stdin = await readStdin()
+      let input: { transcript_path?: string; session_id?: string }
+      try {
+        input = JSON.parse(stdin) as {
+          transcript_path?: string
+          session_id?: string
+        }
+      } catch (e) {
+        console.error(
+          `[recall remember] FATAL: invalid JSON on stdin (${Date.now() - startTime}ms): ${String(e)}\nstdin was: ${stdin.slice(0, 200)}`,
+        )
+        process.exit(1)
+        return
+      }
 
-    const transcriptPath = input.transcript_path
-    const sessionId = input.session_id
+      const transcriptPath = input.transcript_path
+      const sessionId = input.session_id
 
-    if (!transcriptPath || !sessionId) {
+      if (!transcriptPath || !sessionId) {
+        console.error(
+          `[recall remember] missing transcript_path or session_id in stdin (keys: ${Object.keys(input).join(", ")})`,
+        )
+        process.exit(0)
+      }
+
+      // Determine memory directory
+      const projectDir =
+        process.env.CLAUDE_PROJECT_DIR || path.dirname(transcriptPath)
+      const memoryDir = path.join(projectDir, "memory", "sessions")
+
+      const result = await remember({
+        transcriptPath,
+        sessionId,
+        memoryDir,
+      })
+      const elapsed = Date.now() - startTime
+
+      if (opts.json) {
+        console.log(JSON.stringify(result, null, 2))
+      } else if (result.skipped) {
+        console.error(
+          `[recall remember] skipped: ${result.reason} (${elapsed}ms) session=${sessionId.slice(0, 8)}`,
+        )
+      } else {
+        console.error(
+          `[recall remember] saved ${result.lessonsCount ?? 0} lessons to ${result.memoryFile} (${elapsed}ms)`,
+        )
+      }
+    } catch (e) {
+      const elapsed = Date.now() - startTime
       console.error(
-        `[recall remember] missing transcript_path or session_id in stdin`,
+        `[recall remember] FATAL: unhandled error (${elapsed}ms): ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`,
       )
-      process.exit(0)
-    }
-
-    // Determine memory directory
-    const projectDir =
-      process.env.CLAUDE_PROJECT_DIR || path.dirname(transcriptPath)
-    const memoryDir = path.join(projectDir, "memory", "sessions")
-
-    const result = await remember({
-      transcriptPath,
-      sessionId,
-      memoryDir,
-    })
-    const elapsed = Date.now() - startTime
-
-    if (opts.json) {
-      console.log(JSON.stringify(result, null, 2))
-    } else if (result.skipped) {
-      console.error(
-        `[recall remember] skipped: ${result.reason} (${elapsed}ms) session=${sessionId.slice(0, 8)}`,
-      )
-    } else {
-      console.error(
-        `[recall remember] saved ${result.lessonsCount ?? 0} lessons to ${result.memoryFile} (${elapsed}ms)`,
-      )
+      process.exit(1)
     }
   })
 
@@ -445,5 +484,10 @@ export async function main(
 }
 
 if (import.meta.main) {
-  main()
+  main().catch((e) => {
+    console.error(
+      `[recall] FATAL top-level: ${e instanceof Error ? `${e.message}\n${e.stack}` : String(e)}`,
+    )
+    process.exit(1)
+  })
 }
