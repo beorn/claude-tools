@@ -550,12 +550,12 @@ export async function reviewMemorySystem(
         ? formatTimeSince(new Date(lastRebuild).getTime())
         : "never"
       recommendations.push(
-        `Index is stale (${ago}) — run \`bun history index --incremental\``,
+        `Index is stale (${ago}) — run \`bun recall index --incremental\``,
       )
     }
     if (firstPrompts === 0) {
       recommendations.push(
-        "No first_prompt content indexed — run full index rebuild: `bun history index`",
+        "No first_prompt content indexed — run full index rebuild: `bun recall index`",
       )
     }
     if (plans === 0) {
@@ -565,7 +565,7 @@ export async function reviewMemorySystem(
     }
     if (sessions === 0) {
       recommendations.push(
-        "No sessions indexed — run `bun history index` to build the index",
+        "No sessions indexed — run `bun recall index` to build the index",
       )
     }
   } finally {

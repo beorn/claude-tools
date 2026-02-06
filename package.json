@@ -9,7 +9,7 @@
   "scripts": {
     "refactor": "bun tools/refactor.ts",
     "llm": "bun tools/llm.ts",
-    "history": "bun tools/history.ts",
+    "recall": "bun tools/recall.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
