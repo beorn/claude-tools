@@ -156,6 +156,15 @@ let dbInstance: Database | null = null
 const MIGRATIONS = [
   // Add title column to sessions table
   `ALTER TABLE sessions ADD COLUMN title TEXT`,
+  // Unique index for upsert support on content table
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_content_type_source ON content(content_type, source_id)`,
+  // Update trigger for content FTS (needed for upsert)
+  `CREATE TRIGGER IF NOT EXISTS content_au AFTER UPDATE ON content BEGIN
+    INSERT INTO content_fts(content_fts, rowid, title, content)
+    VALUES ('delete', old.id, old.title, old.content);
+    INSERT INTO content_fts(rowid, title, content)
+    VALUES (new.id, new.title, new.content);
+  END`,
 ]
 
 function runMigrations(db: Database): void {
@@ -813,11 +822,45 @@ export function insertContent(
 }
 
 /**
+ * Upsert content into the unified content table.
+ * Uses ON CONFLICT on (content_type, source_id) unique index.
+ */
+export function upsertContent(
+  db: Database,
+  contentType: ContentType,
+  sourceId: string,
+  projectPath: string | null,
+  title: string | null,
+  content: string,
+  timestamp: number,
+): void {
+  db.prepare(`
+    INSERT INTO content (content_type, source_id, project_path, title, content, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(content_type, source_id) DO UPDATE SET
+      title = excluded.title,
+      content = excluded.content,
+      timestamp = excluded.timestamp,
+      project_path = excluded.project_path
+  `).run(contentType, sourceId, projectPath, title, content, timestamp)
+}
+
+/**
  * Clear content table (for rebuild)
  */
 export function clearContent(db: Database): void {
   db.prepare("DELETE FROM content").run()
   db.prepare("INSERT INTO content_fts(content_fts) VALUES('rebuild')").run()
+}
+
+/**
+ * Clear content by type (for selective rebuild)
+ */
+export function clearContentByType(
+  db: Database,
+  contentType: ContentType,
+): void {
+  db.prepare("DELETE FROM content WHERE content_type = ?").run(contentType)
 }
 
 export interface ContentSearchOptions {

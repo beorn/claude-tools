@@ -97,10 +97,28 @@ export async function cmdStatus(opts: { json?: boolean }): Promise<void> {
       ? Date.now() - new Date(lastRebuild).getTime() > ONE_HOUR_MS
       : true
 
+    // Content table counts by type
+    const contentCounts = db
+      .prepare(
+        "SELECT content_type, COUNT(*) as n FROM content GROUP BY content_type",
+      )
+      .all() as { content_type: string; n: number }[]
+    const countByType = new Map(contentCounts.map((r) => [r.content_type, r.n]))
+
     console.log(`${BOLD}Index Health${RESET}`)
     console.log(
       `  ${sessions.toLocaleString()} sessions  ${messages.toLocaleString()} messages  ${totalWrites.toLocaleString()} file writes`,
     )
+
+    // Show content type counts
+    const contentParts: string[] = []
+    for (const [type, count] of countByType) {
+      if (count > 0) contentParts.push(`${count} ${type}s`)
+    }
+    if (contentParts.length > 0) {
+      console.log(`  Content: ${contentParts.join(", ")}`)
+    }
+
     console.log(
       `  DB: ${formatBytes(dbSizeBytes)}  Last rebuild: ${lastRebuild ? formatRelativeTime(new Date(lastRebuild).getTime()) : `${RED}never${RESET}`}${isStale ? ` ${YELLOW}(stale)${RESET}` : ""}`,
     )

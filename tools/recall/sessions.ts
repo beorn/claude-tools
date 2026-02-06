@@ -31,7 +31,10 @@ import * as os from "os"
 // Index
 // ============================================================================
 
-export async function cmdIndex(opts: { incremental?: boolean }): Promise<void> {
+export async function cmdIndex(opts: {
+  incremental?: boolean
+  projectRoot?: string
+}): Promise<void> {
   console.log(
     opts.incremental
       ? "Updating session index..."
@@ -44,6 +47,7 @@ export async function cmdIndex(opts: { incremental?: boolean }): Promise<void> {
   let lastProgressUpdate = 0
   const result = await rebuildIndex(db, {
     incremental: opts.incremental,
+    projectRoot: opts.projectRoot,
     onProgress: (progress) => {
       if (progress.filesProcessed - lastProgressUpdate >= 50) {
         lastProgressUpdate = progress.filesProcessed
@@ -73,6 +77,25 @@ export async function cmdIndex(opts: { incremental?: boolean }): Promise<void> {
   }
   if (result.todos > 0) {
     console.log(`  ${result.todos.toLocaleString()} todo lists`)
+  }
+  if (result.beads > 0) {
+    console.log(`  ${result.beads.toLocaleString()} beads (issues)`)
+  }
+  if (result.sessionMemory > 0) {
+    console.log(
+      `  ${result.sessionMemory.toLocaleString()} session memory files`,
+    )
+  }
+  if (result.projectMemory > 0) {
+    console.log(
+      `  ${result.projectMemory.toLocaleString()} project memory files`,
+    )
+  }
+  if (result.docs > 0) {
+    console.log(`  ${result.docs.toLocaleString()} documentation files`)
+  }
+  if (result.claudeMd > 0) {
+    console.log(`  ${result.claudeMd.toLocaleString()} CLAUDE.md files`)
   }
   if (result.skippedOld > 0) {
     console.log(`  (skipped ${result.skippedOld} sessions older than 30 days)`)

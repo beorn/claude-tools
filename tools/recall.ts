@@ -74,7 +74,10 @@ program
   .option("-r, --response", "Assistant messages only (implies --raw)")
   .option("-t, --tool <name>", "Tool filter: Write, Bash, etc. (implies --raw)")
   .option("--session <id>", "Specific session (implies --raw)")
-  .option("-i, --include <types>", "Content types: p,m,s,t,f (implies --raw)")
+  .option(
+    "-i, --include <types>",
+    "Content types: p,m,s,t,f,b,e,d,c (implies --raw)",
+  )
   .action(async (query: string, opts: SearchOptions) => {
     await cmdSearch(query, opts)
   })
@@ -84,7 +87,11 @@ program
   .command("index")
   .description("Build/rebuild FTS5 index")
   .option("--incremental", "Only index new sessions")
-  .action(async (opts: { incremental?: boolean }) => {
+  .option(
+    "--project-root <path>",
+    "Project root for indexing project sources (beads, docs, memory)",
+  )
+  .action(async (opts: { incremental?: boolean; projectRoot?: string }) => {
     await cmdIndex(opts)
   })
 

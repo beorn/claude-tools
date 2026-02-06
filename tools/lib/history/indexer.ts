@@ -10,6 +10,7 @@ import { Glob } from "bun"
 import * as path from "path"
 import * as fs from "fs"
 import * as readline from "readline"
+import * as os from "os"
 import {
   PROJECTS_DIR,
   PLANS_DIR,
@@ -19,16 +20,19 @@ import {
   insertMessage,
   insertWrite,
   insertContent,
+  upsertContent,
   getSessionByPath,
   clearTables,
   clearContent,
   setIndexMeta,
+  getIndexMeta,
   getAllSessionEntries,
   findPlanFiles,
   findTodoFiles,
 } from "./db"
-import type { TodoItem } from "./types"
+import type { TodoItem, BeadRecord } from "./types"
 import type { JsonlRecord, ToolUse } from "./types"
+import { formatBead, extractMarkdownTitle } from "./formatters"
 
 export interface IndexProgress {
   filesProcessed: number
@@ -43,6 +47,7 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 export interface IndexOptions {
   incremental?: boolean // Only index new/updated sessions
   messagesOnly?: boolean // Skip writes table (faster)
+  projectRoot?: string // Project root for indexing project sources
   onProgress?: (progress: IndexProgress) => void
 }
 
@@ -300,6 +305,11 @@ export interface IndexResult {
   summaries: number
   firstPrompts: number
   skippedOld: number
+  beads: number
+  sessionMemory: number
+  projectMemory: number
+  docs: number
+  claudeMd: number
 }
 
 /**
@@ -499,6 +509,19 @@ export async function rebuildIndex(
     }
   }
 
+  // Index project sources if projectRoot is provided
+  let projectSourceResult = {
+    beads: 0,
+    sessionMemory: 0,
+    projectMemory: 0,
+    docs: 0,
+    claudeMd: 0,
+  }
+  if (options.projectRoot) {
+    const projectPath = options.projectRoot
+    projectSourceResult = indexProjectSources(db, projectPath)
+  }
+
   // Store metadata
   const duration = Date.now() - startTime
   setIndexMeta(db, "last_rebuild", new Date().toISOString())
@@ -509,6 +532,19 @@ export async function rebuildIndex(
   setIndexMeta(db, "total_todos", String(totalTodos))
   setIndexMeta(db, "total_summaries", String(totalSummaries))
   setIndexMeta(db, "total_first_prompts", String(totalFirstPrompts))
+  setIndexMeta(db, "total_beads", String(projectSourceResult.beads))
+  setIndexMeta(
+    db,
+    "total_session_memory",
+    String(projectSourceResult.sessionMemory),
+  )
+  setIndexMeta(
+    db,
+    "total_project_memory",
+    String(projectSourceResult.projectMemory),
+  )
+  setIndexMeta(db, "total_docs", String(projectSourceResult.docs))
+  setIndexMeta(db, "total_claude_md", String(projectSourceResult.claudeMd))
 
   return {
     files: totalFiles,
@@ -519,5 +555,317 @@ export async function rebuildIndex(
     summaries: totalSummaries,
     firstPrompts: totalFirstPrompts,
     skippedOld,
+    ...projectSourceResult,
+  }
+}
+
+// ============================================================================
+// Project source indexing
+// ============================================================================
+
+/**
+ * Check if a source file has changed since last indexing.
+ * Uses index_meta with a key like "mtime:<type>:<sourceId>".
+ */
+function hasChanged(
+  db: Database,
+  metaKey: string,
+  currentMtime: number,
+): boolean {
+  const stored = getIndexMeta(db, metaKey)
+  return !stored || parseInt(stored, 10) < currentMtime
+}
+
+function recordMtime(db: Database, metaKey: string, mtime: number): void {
+  setIndexMeta(db, metaKey, String(mtime))
+}
+
+/**
+ * Encode a project path the way Claude Code does: /Users/beorn/Code/pim/km → -Users-beorn-Code-pim-km
+ */
+function encodeProjectPath(projectRoot: string): string {
+  return projectRoot.replace(/\//g, "-")
+}
+
+/**
+ * Index beads from .beads/issues.jsonl
+ */
+function indexBeads(
+  db: Database,
+  projectRoot: string,
+  projectPath: string,
+): number {
+  const issuesPath = path.join(projectRoot, ".beads", "issues.jsonl")
+  if (!fs.existsSync(issuesPath)) return 0
+
+  const stats = fs.statSync(issuesPath)
+  const metaKey = `mtime:beads:${projectPath}`
+  if (!hasChanged(db, metaKey, stats.mtime.getTime())) return 0
+
+  const content = fs.readFileSync(issuesPath, "utf8")
+  const lines = content.split("\n").filter(Boolean)
+  let count = 0
+
+  for (const line of lines) {
+    try {
+      const bead = JSON.parse(line) as BeadRecord
+      const { title, content: beadContent } = formatBead(bead)
+      const timestamp = bead.updated_at
+        ? new Date(bead.updated_at).getTime()
+        : bead.created_at
+          ? new Date(bead.created_at).getTime()
+          : Date.now()
+
+      upsertContent(
+        db,
+        "bead",
+        bead.id,
+        projectPath,
+        title,
+        beadContent,
+        timestamp,
+      )
+      count++
+    } catch {
+      // Skip malformed lines
+    }
+  }
+
+  recordMtime(db, metaKey, stats.mtime.getTime())
+  return count
+}
+
+/**
+ * Index session memory files from memory/sessions/*.md
+ */
+function indexSessionMemory(
+  db: Database,
+  projectRoot: string,
+  projectPath: string,
+): number {
+  const memoryDir = path.join(projectRoot, "memory", "sessions")
+  if (!fs.existsSync(memoryDir)) return 0
+
+  let count = 0
+  for (const entry of fs.readdirSync(memoryDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue
+
+    const filePath = path.join(memoryDir, entry.name)
+    const stats = fs.statSync(filePath)
+    const sourceId = `session-memory:${entry.name}`
+    const metaKey = `mtime:session_memory:${sourceId}`
+
+    if (!hasChanged(db, metaKey, stats.mtime.getTime())) continue
+
+    try {
+      const content = fs.readFileSync(filePath, "utf8")
+      if (!content.trim()) continue
+
+      const title = `Session memory: ${entry.name.replace(/\.md$/, "")}`
+      upsertContent(
+        db,
+        "session_memory",
+        sourceId,
+        projectPath,
+        title,
+        content,
+        stats.mtime.getTime(),
+      )
+      recordMtime(db, metaKey, stats.mtime.getTime())
+      count++
+    } catch {
+      // Skip unreadable files
+    }
+  }
+  return count
+}
+
+/**
+ * Index project memory files from ~/.claude/projects/<encoded>/memory/*.md
+ */
+function indexProjectMemory(
+  db: Database,
+  projectRoot: string,
+  projectPath: string,
+): number {
+  const encodedPath = encodeProjectPath(projectRoot)
+  const memoryDir = path.join(
+    os.homedir(),
+    ".claude",
+    "projects",
+    encodedPath,
+    "memory",
+  )
+  if (!fs.existsSync(memoryDir)) return 0
+
+  let count = 0
+  for (const entry of fs.readdirSync(memoryDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue
+
+    const filePath = path.join(memoryDir, entry.name)
+    const stats = fs.statSync(filePath)
+    const sourceId = `project-memory:${entry.name}`
+    const metaKey = `mtime:project_memory:${sourceId}`
+
+    if (!hasChanged(db, metaKey, stats.mtime.getTime())) continue
+
+    try {
+      const content = fs.readFileSync(filePath, "utf8")
+      if (!content.trim()) continue
+
+      const title = extractMarkdownTitle(
+        content,
+        `Project memory: ${entry.name.replace(/\.md$/, "")}`,
+      )
+      upsertContent(
+        db,
+        "project_memory",
+        sourceId,
+        projectPath,
+        title,
+        content,
+        stats.mtime.getTime(),
+      )
+      recordMtime(db, metaKey, stats.mtime.getTime())
+      count++
+    } catch {
+      // Skip unreadable files
+    }
+  }
+  return count
+}
+
+/**
+ * Index documentation files from docs/ and docs/lessons/
+ */
+function indexDocs(
+  db: Database,
+  projectRoot: string,
+  projectPath: string,
+): number {
+  const docsDir = path.join(projectRoot, "docs")
+  if (!fs.existsSync(docsDir)) return 0
+
+  let count = 0
+
+  function indexDir(dir: string): void {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        indexDir(path.join(dir, entry.name))
+        continue
+      }
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue
+
+      const filePath = path.join(dir, entry.name)
+      const relPath = path.relative(projectRoot, filePath)
+      const stats = fs.statSync(filePath)
+      const sourceId = `doc:${relPath}`
+      const metaKey = `mtime:doc:${sourceId}`
+
+      if (!hasChanged(db, metaKey, stats.mtime.getTime())) continue
+
+      try {
+        const content = fs.readFileSync(filePath, "utf8")
+        if (!content.trim()) continue
+
+        const title = extractMarkdownTitle(content, relPath)
+        upsertContent(
+          db,
+          "doc",
+          sourceId,
+          projectPath,
+          title,
+          content,
+          stats.mtime.getTime(),
+        )
+        recordMtime(db, metaKey, stats.mtime.getTime())
+        count++
+      } catch {
+        // Skip unreadable files
+      }
+    }
+  }
+
+  indexDir(docsDir)
+  return count
+}
+
+/**
+ * Index CLAUDE.md files (root + vendor/*)
+ */
+function indexClaudeMd(
+  db: Database,
+  projectRoot: string,
+  projectPath: string,
+): number {
+  let count = 0
+
+  const candidates: string[] = [path.join(projectRoot, "CLAUDE.md")]
+
+  // Add vendor/*/CLAUDE.md
+  const vendorDir = path.join(projectRoot, "vendor")
+  if (fs.existsSync(vendorDir)) {
+    for (const entry of fs.readdirSync(vendorDir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        candidates.push(path.join(vendorDir, entry.name, "CLAUDE.md"))
+      }
+    }
+  }
+
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue
+
+    const relPath = path.relative(projectRoot, filePath)
+    const stats = fs.statSync(filePath)
+    const sourceId = `claude-md:${relPath}`
+    const metaKey = `mtime:claude_md:${sourceId}`
+
+    if (!hasChanged(db, metaKey, stats.mtime.getTime())) continue
+
+    try {
+      const content = fs.readFileSync(filePath, "utf8")
+      if (!content.trim()) continue
+
+      const title = extractMarkdownTitle(content, relPath)
+      upsertContent(
+        db,
+        "claude_md",
+        sourceId,
+        projectPath,
+        title,
+        content,
+        stats.mtime.getTime(),
+      )
+      recordMtime(db, metaKey, stats.mtime.getTime())
+      count++
+    } catch {
+      // Skip unreadable files
+    }
+  }
+  return count
+}
+
+/**
+ * Index all project sources (beads, memory, docs, CLAUDE.md).
+ * Uses mtime checks for incremental updates — fast when nothing changed.
+ */
+export function indexProjectSources(
+  db: Database,
+  projectRoot: string,
+): {
+  beads: number
+  sessionMemory: number
+  projectMemory: number
+  docs: number
+  claudeMd: number
+} {
+  const projectPath = projectRoot
+
+  return {
+    beads: indexBeads(db, projectRoot, projectPath),
+    sessionMemory: indexSessionMemory(db, projectRoot, projectPath),
+    projectMemory: indexProjectMemory(db, projectRoot, projectPath),
+    docs: indexDocs(db, projectRoot, projectPath),
+    claudeMd: indexClaudeMd(db, projectRoot, projectPath),
   }
 }

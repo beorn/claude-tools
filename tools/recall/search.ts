@@ -216,6 +216,16 @@ function formatType(type: string): string {
       return `${YELLOW}[todo]${RESET}`
     case "first_prompt":
       return `${CYAN}[prompt]${RESET}`
+    case "bead":
+      return `${MAGENTA}[bead]${RESET}`
+    case "session_memory":
+      return `${GREEN}[memory]${RESET}`
+    case "project_memory":
+      return `${GREEN}[proj-mem]${RESET}`
+    case "doc":
+      return `${CYAN}[doc]${RESET}`
+    case "claude_md":
+      return `${DIM}[claude]${RESET}`
     default:
       return `[${type}]`
   }
@@ -367,6 +377,19 @@ async function rawSearch(
   }
 
   // Search content table if needed
+  // Project source types (bead, session_memory, project_memory, doc, claude_md)
+  // are not time-filtered — they represent persistent project knowledge
+  const PROJECT_SOURCE_TYPES = new Set([
+    "bead",
+    "session_memory",
+    "project_memory",
+    "doc",
+    "claude_md",
+  ])
+  const hasOnlyProjectTypes =
+    contentTypes && contentTypes.every((t) => PROJECT_SOURCE_TYPES.has(t))
+  const contentSinceTime = hasOnlyProjectTypes ? undefined : sinceTime
+
   let contentResults: {
     results: (ContentRecord & { snippet: string; rank: number })[]
     total: number
@@ -376,7 +399,7 @@ async function rawSearch(
       limit,
       projectFilter: project?.replace(/\*/g, ""),
       types: contentTypes,
-      sinceTime,
+      sinceTime: contentSinceTime,
     })
   }
 
@@ -391,6 +414,11 @@ async function rawSearch(
     plan: "\u{1F4CB}",
     summary: "\u{1F4DD}",
     todo: "\u2705",
+    bead: "\u{1F41E}",
+    session_memory: "\u{1F4A1}",
+    project_memory: "\u{1F4A1}",
+    doc: "\u{1F4D6}",
+    claude_md: "\u{1F4D1}",
   }
   const typeColors: Record<string, string> = {
     message: CYAN,
@@ -399,6 +427,11 @@ async function rawSearch(
     plan: GREEN,
     summary: YELLOW,
     todo: MAGENTA,
+    bead: MAGENTA,
+    session_memory: GREEN,
+    project_memory: GREEN,
+    doc: CYAN,
+    claude_md: "",
   }
 
   if (json) {

@@ -51,6 +51,28 @@ export type ContentType =
   | "summary"
   | "todo"
   | "first_prompt"
+  | "bead"
+  | "session_memory"
+  | "project_memory"
+  | "doc"
+  | "claude_md"
+
+// Bead record from issues.jsonl
+export interface BeadRecord {
+  id: string
+  title: string
+  description?: string
+  status: string
+  priority?: number
+  issue_type?: string
+  notes?: string
+  design?: string
+  close_reason?: string
+  created_at?: string
+  updated_at?: string
+  closed_at?: string
+  parent?: string
+}
 
 // Unified content record for FTS
 export interface ContentRecord {

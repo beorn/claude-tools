@@ -130,7 +130,8 @@ export function formatSessionId(
 
 /**
  * Parse include string to content types.
- * Short codes: p=plan, m=message, s=summary, t=todo, f=first_prompt
+ * Short codes: p=plan, m=message, s=summary, t=todo, f=first_prompt,
+ *              b=bead, e=session_memory, d=doc, c=claude_md
  */
 export function parseInclude(includeStr: string): ContentType[] {
   const types: ContentType[] = []
@@ -146,6 +147,10 @@ export function parseInclude(includeStr: string): ContentType[] {
     s: "summary",
     t: "todo",
     f: "first_prompt",
+    b: "bead",
+    e: "session_memory",
+    d: "doc",
+    c: "claude_md",
   }
 
   const longMap: Record<string, ContentType> = {
@@ -160,6 +165,15 @@ export function parseInclude(includeStr: string): ContentType[] {
     first_prompt: "first_prompt",
     first_prompts: "first_prompt",
     prompts: "first_prompt",
+    bead: "bead",
+    beads: "bead",
+    session_memory: "session_memory",
+    memory: "session_memory",
+    project_memory: "project_memory",
+    doc: "doc",
+    docs: "doc",
+    claude_md: "claude_md",
+    claude: "claude_md",
   }
 
   for (const part of parts) {

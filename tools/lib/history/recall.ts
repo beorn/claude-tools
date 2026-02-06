@@ -20,6 +20,7 @@ import {
   type ContentSearchOptions,
 } from "./db"
 import type { ContentType } from "./types"
+import { indexProjectSources } from "./indexer"
 import { getCheapModel } from "../llm/types"
 import { queryModel } from "../llm/research"
 import { isProviderAvailable } from "../llm/providers"
@@ -61,7 +62,7 @@ export interface RecallResult {
 }
 
 export interface RecallSearchResult {
-  type: "message" | "plan" | "summary" | "todo" | "first_prompt"
+  type: ContentType
   sessionId: string
   sessionTitle: string | null
   timestamp: number
@@ -206,8 +207,8 @@ export async function recall(
       `FTS5 messages: ${messageResults.total} total, ${messageResults.results.length} returned (${Date.now() - searchStart}ms)`,
     )
 
-    // Search unified content table (plans, summaries, todos, first_prompts)
-    const contentOpts: ContentSearchOptions = {
+    // Search session-scoped content (plans, summaries, todos, first_prompts) with time filter
+    const sessionContentOpts: ContentSearchOptions = {
       limit: limit * 2,
       sinceTime,
       projectFilter,
@@ -216,9 +217,34 @@ export async function recall(
     }
 
     const contentStart = Date.now()
-    const contentResults = searchAll(db, query, contentOpts)
+    const sessionContentResults = searchAll(db, query, sessionContentOpts)
+
+    // Search project knowledge sources (beads, memory, docs) WITHOUT time filter
+    const projectContentOpts: ContentSearchOptions = {
+      limit: limit * 2,
+      projectFilter,
+      snippetTokens,
+      types: [
+        "bead",
+        "session_memory",
+        "project_memory",
+        "doc",
+        "claude_md",
+      ] as ContentType[],
+    }
+
+    const projectContentResults = searchAll(db, query, projectContentOpts)
+
+    // Merge both content result sets
+    const contentResults = {
+      results: [
+        ...sessionContentResults.results,
+        ...projectContentResults.results,
+      ],
+      total: sessionContentResults.total + projectContentResults.total,
+    }
     log(
-      `FTS5 content: ${contentResults.total} total, ${contentResults.results.length} returned (${Date.now() - contentStart}ms)`,
+      `FTS5 content: ${contentResults.total} total (session=${sessionContentResults.results.length} project=${projectContentResults.results.length}) (${Date.now() - contentStart}ms)`,
     )
 
     // Get session titles for enrichment
@@ -447,6 +473,11 @@ export interface ReviewResult {
     summaries: number
     firstPrompts: number
     todos: number
+    beads: number
+    sessionMemory: number
+    projectMemory: number
+    docs: number
+    claudeMd: number
     dbSizeBytes: number
     lastRebuild: string | null
     isStale: boolean
@@ -517,6 +548,11 @@ export async function reviewMemorySystem(
     const summaries = countByType.get("summary") ?? 0
     const firstPrompts = countByType.get("first_prompt") ?? 0
     const todos = countByType.get("todo") ?? 0
+    const beads = countByType.get("bead") ?? 0
+    const sessionMemory = countByType.get("session_memory") ?? 0
+    const projectMemory = countByType.get("project_memory") ?? 0
+    const docs = countByType.get("doc") ?? 0
+    const claudeMd = countByType.get("claude_md") ?? 0
 
     // DB file size
     let dbSizeBytes = 0
@@ -539,6 +575,11 @@ export async function reviewMemorySystem(
       summaries,
       firstPrompts,
       todos,
+      beads,
+      sessionMemory,
+      projectMemory,
+      docs,
+      claudeMd,
       dbSizeBytes,
       lastRebuild,
       isStale,
@@ -573,7 +614,7 @@ export async function reviewMemorySystem(
   }
 
   log(
-    `review: index has ${indexHealth.sessions} sessions, ${indexHealth.messages} messages, ${indexHealth.plans} plans, ${indexHealth.firstPrompts} first_prompts`,
+    `review: index has ${indexHealth.sessions} sessions, ${indexHealth.messages} messages, ${indexHealth.plans} plans, ${indexHealth.firstPrompts} first_prompts, ${indexHealth.beads} beads, ${indexHealth.docs} docs`,
   )
 
   // ── Hook Configuration ────────────────────────────────────────────────
@@ -922,6 +963,42 @@ function formatTimeSince(timestamp: number): string {
 }
 
 // ============================================================================
+// Project source indexing (hook-time)
+// ============================================================================
+
+/**
+ * Ensure project sources are indexed before searching.
+ * Called from hookRecall when CLAUDE_PROJECT_DIR is set.
+ * Uses mtime checks — fast (few ms) when nothing changed.
+ */
+function ensureProjectSourcesIndexed(): void {
+  const projectRoot = process.env.CLAUDE_PROJECT_DIR
+  if (!projectRoot) return
+
+  try {
+    const db = getDb()
+    const startTime = Date.now()
+    const result = indexProjectSources(db, projectRoot)
+    const total =
+      result.beads +
+      result.sessionMemory +
+      result.projectMemory +
+      result.docs +
+      result.claudeMd
+    if (total > 0) {
+      log(
+        `indexed ${total} project sources (${Date.now() - startTime}ms): beads=${result.beads} memory=${result.sessionMemory} project=${result.projectMemory} docs=${result.docs} claude=${result.claudeMd}`,
+      )
+    }
+    // Don't close db here — recall() will use it and close when done
+  } catch (e) {
+    log(
+      `project source indexing failed: ${e instanceof Error ? e.message : String(e)}`,
+    )
+  }
+}
+
+// ============================================================================
 // Hook subcommand: search + return additionalContext JSON
 // ============================================================================
 
@@ -981,6 +1058,9 @@ export async function hookRecall(prompt: string): Promise<HookResult> {
   if (prompt.startsWith("/")) {
     return { skipped: true, reason: "slash_command" }
   }
+
+  // Index project sources if CLAUDE_PROJECT_DIR is set (fast mtime checks)
+  ensureProjectSourcesIndexed()
 
   const result = await recall(prompt, {
     limit: 3,
