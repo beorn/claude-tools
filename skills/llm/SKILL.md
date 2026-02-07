@@ -52,7 +52,15 @@ bun llm --deep -y --with-history "topic"
 By default, response is written to a file and JSON metadata is printed to stdout:
 
 ```json
-{"file":"/tmp/llm-abc12345-1738800000000-x1y2.txt","chars":5432,"model":"GPT-5.2","tokens":1234,"cost":"$0.02","durationMs":3200}
+{
+  "query": "What is the capital of France?",
+  "file": "/tmp/llm-abc12345-1738800000000-x1y2.txt",
+  "chars": 5432,
+  "model": "GPT-5.2",
+  "tokens": 1234,
+  "cost": "$0.02",
+  "durationMs": 3200
+}
 ```
 
 Read the file with `Read` tool. Stale files (>7 days) are auto-cleaned on next run.

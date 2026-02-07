@@ -21,7 +21,13 @@ import {
 } from "./db"
 import type { ContentType } from "./types"
 import { indexProjectSources } from "./indexer"
-import { getCheapModel } from "../llm/types"
+import {
+  getCheapModels,
+  getCheapModel,
+  estimateCost,
+  formatCost,
+  type Model,
+} from "../llm/types"
 import { queryModel } from "../llm/research"
 import { isProviderAvailable } from "../llm/providers"
 
@@ -48,7 +54,7 @@ export interface RecallOptions {
   raw?: boolean // Return raw results without LLM synthesis
   since?: string // Time filter (1h, 1d, 1w, etc.)
   json?: boolean // Return structured JSON
-  timeout?: number // Total timeout in ms (default 8000)
+  timeout?: number // Total timeout in ms (default 4000)
   snippetTokens?: number // Snippet window size (default 200)
   projectFilter?: string // Project filter
 }
@@ -59,6 +65,10 @@ export interface RecallResult {
   results: RecallSearchResult[]
   durationMs: number
   llmCost?: number
+  timing?: {
+    searchMs: number
+    llmMs?: number
+  }
 }
 
 export interface RecallSearchResult {
@@ -162,7 +172,7 @@ export async function recall(
     raw = false,
     since,
     json = false,
-    timeout = 8000,
+    timeout = 4000,
     snippetTokens = 200,
     projectFilter,
   } = options
@@ -203,8 +213,9 @@ export async function recall(
 
     const searchStart = Date.now()
     const messageResults = ftsSearchWithSnippet(db, query, messageOpts)
+    const msgMs = Date.now() - searchStart
     log(
-      `FTS5 messages: ${messageResults.total} total, ${messageResults.results.length} returned (${Date.now() - searchStart}ms)`,
+      `FTS5 messages: ${messageResults.total} total, ${messageResults.results.length} returned (${msgMs}ms)`,
     )
 
     // Search session-scoped content (plans, summaries, todos, first_prompts) with time filter
@@ -218,8 +229,10 @@ export async function recall(
 
     const contentStart = Date.now()
     const sessionContentResults = searchAll(db, query, sessionContentOpts)
+    const sessionMs = Date.now() - contentStart
 
     // Search project knowledge sources (beads, memory, docs) WITHOUT time filter
+    const projectStart = Date.now()
     const projectContentOpts: ContentSearchOptions = {
       limit: limit * 2,
       projectFilter,
@@ -234,6 +247,7 @@ export async function recall(
     }
 
     const projectContentResults = searchAll(db, query, projectContentOpts)
+    const projectMs = Date.now() - projectStart
 
     // Merge both content result sets
     const contentResults = {
@@ -243,8 +257,9 @@ export async function recall(
       ],
       total: sessionContentResults.total + projectContentResults.total,
     }
+    const searchMs = Date.now() - searchStart
     log(
-      `FTS5 content: ${contentResults.total} total (session=${sessionContentResults.results.length} project=${projectContentResults.results.length}) (${Date.now() - contentStart}ms)`,
+      `FTS5 search: ${searchMs}ms (messages=${msgMs}ms session=${sessionMs}ms project=${projectMs}ms)`,
     )
 
     // Get session titles for enrichment
@@ -316,19 +331,24 @@ export async function recall(
         synthesis: null,
         results: deduped,
         durationMs: Date.now() - startTime,
+        timing: { searchMs },
       }
     }
 
-    // Attempt LLM synthesis
+    // Attempt LLM synthesis with AbortController for clean timeout
+    const llmStart = Date.now()
     const synthesis = await synthesizeResults(query, deduped, timeout)
+    const llmMs = Date.now() - llmStart
 
     const totalMs = Date.now() - startTime
     if (synthesis.text) {
       log(
-        `synthesis OK: ${synthesis.text.length} chars, cost=$${(synthesis.cost ?? 0).toFixed(4)} (${totalMs}ms total)`,
+        `synthesis OK: ${synthesis.text.length} chars, cost=$${(synthesis.cost ?? 0).toFixed(4)} (${totalMs}ms total, search=${searchMs}ms llm=${llmMs}ms${synthesis.aborted ? " ABORTED" : ""})`,
       )
     } else {
-      log(`synthesis returned null (${totalMs}ms total)`)
+      log(
+        `synthesis returned null (${totalMs}ms total, search=${searchMs}ms llm=${llmMs}ms${synthesis.aborted ? " ABORTED" : ""})`,
+      )
     }
 
     return {
@@ -337,6 +357,7 @@ export async function recall(
       results: deduped,
       durationMs: totalMs,
       llmCost: synthesis.cost,
+      timing: { searchMs, llmMs },
     }
   } finally {
     closeDb()
@@ -350,6 +371,130 @@ export async function recall(
 interface SynthesisResult {
   text: string | null
   cost?: number
+  aborted?: boolean
+}
+
+// ── LLM Race Infrastructure ──────────────────────────────────────────────
+
+export interface LlmRaceModelResult {
+  model: string
+  ms: number
+  status: "ok" | "timeout" | "error"
+  tokens?: { input: number; output: number }
+  cost?: number // USD
+}
+
+export interface LlmRaceResult {
+  winner: string | null
+  text: string | null
+  cost?: number
+  timedOut: boolean
+  totalMs: number
+  perModel: LlmRaceModelResult[]
+  totalCost: number // sum of ALL models called (winner + losers)
+}
+
+/**
+ * Race multiple LLM models — first valid response wins.
+ * Returns per-model timing diagnostics regardless of outcome.
+ */
+export async function raceLlmModels(
+  context: string,
+  systemPrompt: string,
+  models: Model[],
+  timeoutMs: number,
+): Promise<LlmRaceResult> {
+  const raceStart = Date.now()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  // Track per-model results (settled after race completes)
+  const modelResults: LlmRaceModelResult[] = models.map((m) => ({
+    model: m.modelId,
+    ms: 0,
+    status: "timeout" as const,
+  }))
+
+  // Race all models
+  const racePromises = models.map(async (model, i) => {
+    const result = await queryModel({
+      question: context,
+      model,
+      systemPrompt,
+      abortSignal: controller.signal,
+    })
+
+    const elapsed = Date.now() - raceStart
+    const mr = modelResults[i]!
+    mr.ms = elapsed
+
+    // Track tokens + compute cost from actual usage
+    const usage = result.response.usage
+    if (usage) {
+      mr.tokens = { input: usage.promptTokens, output: usage.completionTokens }
+      mr.cost = estimateCost(model, usage.promptTokens, usage.completionTokens)
+    }
+
+    // queryModel catches errors internally — check for abort/error
+    if (controller.signal.aborted) {
+      mr.status = "timeout"
+      return null
+    }
+    if (result.response.error) {
+      mr.status = "error"
+      return null
+    }
+
+    const content = result.response.content
+    if (!content) {
+      mr.status = "error"
+      return null
+    }
+
+    mr.status = "ok"
+    return {
+      text: content,
+      cost: mr.cost,
+      model: model.modelId,
+    }
+  })
+
+  try {
+    const winner = await Promise.any(
+      racePromises.map((p) =>
+        p.then((r) => {
+          if (!r) throw new Error("empty")
+          clearTimeout(timer)
+          controller.abort()
+          return r
+        }),
+      ),
+    )
+
+    const totalCost = modelResults.reduce((s, m) => s + (m.cost ?? 0), 0)
+    return {
+      winner: winner.model,
+      text: winner.text,
+      cost: winner.cost,
+      timedOut: false,
+      totalMs: Date.now() - raceStart,
+      perModel: modelResults,
+      totalCost,
+    }
+  } catch {
+    clearTimeout(timer)
+    controller.abort()
+    const totalMs = Date.now() - raceStart
+    const totalCost = modelResults.reduce((s, m) => s + (m.cost ?? 0), 0)
+    return {
+      winner: null,
+      text: null,
+      timedOut: totalMs >= timeoutMs - 50,
+      totalMs,
+      perModel: modelResults,
+      totalCost,
+    }
+  }
 }
 
 async function synthesizeResults(
@@ -357,62 +502,34 @@ async function synthesizeResults(
   results: RecallSearchResult[],
   timeoutMs: number,
 ): Promise<SynthesisResult> {
-  // Check if any LLM provider is available
-  const model = getCheapModel()
-  if (!model || !isProviderAvailable(model.provider)) {
-    log(
-      `no LLM provider available (model: ${model?.modelId ?? "none"}, provider: ${model?.provider ?? "none"})`,
-    )
+  const models = getCheapModels(2).filter((m) =>
+    isProviderAvailable(m.provider),
+  )
+  if (models.length === 0) {
+    log(`no LLM providers available for synthesis`)
     return { text: null }
   }
 
-  // Format context from search results
   const context = formatResultsForLlm(query, results)
+  const modelNames = models.map((m) => m.modelId).join(", ")
   log(
-    `LLM synthesis: model=${model.modelId} provider=${model.provider} context=${context.length} chars timeout=${timeoutMs}ms`,
+    `LLM synthesis: racing [${modelNames}] context=${context.length} chars timeout=${timeoutMs}ms`,
   )
 
-  const llmStart = Date.now()
+  const race = await raceLlmModels(context, SYNTHESIS_PROMPT, models, timeoutMs)
 
-  // Race LLM call against timeout
-  let llmDone = false
-
-  const result = await Promise.race([
-    queryModel({
-      question: context,
-      model,
-      systemPrompt: SYNTHESIS_PROMPT,
-    })
-      .then((r) => {
-        llmDone = true
-        log(`LLM responded in ${Date.now() - llmStart}ms`)
-        return r
-      })
-      .catch((err: Error) => {
-        llmDone = true
-        log(
-          `LLM synthesis failed after ${Date.now() - llmStart}ms: ${err.message} (model: ${model.modelId}, provider: ${model.provider})`,
-        )
-        return null
-      }),
-    createTimeout(timeoutMs).then(() => {
-      if (!llmDone) {
-        log(
-          `LLM synthesis timed out after ${timeoutMs}ms (model: ${model.modelId}, provider: ${model.provider}, query: "${query.slice(0, 50)}")`,
-        )
-      }
-      return null
-    }),
-  ])
-
-  if (!result) {
-    return { text: null }
+  if (race.winner) {
+    log(`LLM winner: ${race.winner} in ${race.totalMs}ms`)
+  } else {
+    log(
+      `LLM synthesis ${race.timedOut ? "aborted" : "failed"} after ${race.totalMs}ms (models: [${modelNames}])`,
+    )
   }
 
-  const cost = result.response.usage?.estimatedCost
   return {
-    text: result.response.content || null,
-    cost,
+    text: race.text,
+    cost: race.cost,
+    aborted: race.timedOut,
   }
 }
 
@@ -451,14 +568,6 @@ function formatResultsForLlm(
   )
 
   return lines.join("\n")
-}
-
-function createTimeout(
-  ms: number,
-): Promise<{ response: { content: ""; usage: undefined } } | null> {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(null), ms)
-  })
 }
 
 // ============================================================================
@@ -505,6 +614,30 @@ export interface ReviewResult {
     durationMs: number
     resultCount: number
     uniqueSessions: number
+  } | null
+  llmRaceBenchmark: {
+    models: string[]
+    queries: number
+    results: {
+      query: string
+      searchMs: number
+      winner: string | null
+      timedOut: boolean
+      totalMs: number
+      perModel: LlmRaceModelResult[]
+      raceCost: number
+    }[]
+    summary: {
+      winsByModel: Record<string, number>
+      timeoutCount: number
+      timeoutPct: number
+      p50Ms: number
+      p95Ms: number
+      avgSearchMs: number
+      avgLlmMs: number
+      totalCost: number
+      costPerQuery: number
+    }
   } | null
   recommendations: string[]
 }
@@ -745,6 +878,169 @@ export async function reviewMemorySystem(
     recommendations.push("Recall test threw an error — check DB and LLM setup")
   }
 
+  // ── LLM Race Benchmark ─────────────────────────────────────────────────
+  log(`review: running LLM race benchmark...`)
+  let llmRaceBenchmark: ReviewResult["llmRaceBenchmark"] = null
+  const raceModels = getCheapModels(2).filter((m) =>
+    isProviderAvailable(m.provider),
+  )
+
+  if (raceModels.length > 0) {
+    const raceQueries = [
+      "inline edit",
+      "bug fix",
+      "refactor",
+      "test failure",
+      "keyboard input",
+    ]
+    const raceTimeoutMs = 10000 // generous for benchmarking
+    const raceResults: NonNullable<
+      ReviewResult["llmRaceBenchmark"]
+    >["results"] = []
+
+    for (const q of raceQueries) {
+      try {
+        // Do a quick FTS5 search to build context
+        const searchStart = Date.now()
+        const db = getDb()
+        const msgResults = ftsSearchWithSnippet(db, q, {
+          limit: 10,
+          sinceTime: Date.now() - THIRTY_DAYS_MS,
+          snippetTokens: 200,
+        })
+        const contentResults = searchAll(db, q, {
+          limit: 10,
+          types: ["bead", "session_memory", "doc"] as ContentType[],
+          snippetTokens: 200,
+        })
+        closeDb()
+        const searchMs = Date.now() - searchStart
+
+        // Build minimal results for context
+        const sessionTitles = getAllSessionTitles()
+        const fakeResults: RecallSearchResult[] = [
+          ...msgResults.results.slice(0, 5).map((r) => ({
+            type: "message" as ContentType,
+            sessionId: r.session_id,
+            sessionTitle: sessionTitles.get(r.session_id) ?? null,
+            timestamp: r.timestamp,
+            snippet: r.snippet || r.content?.slice(0, 300) || "",
+            rank: r.rank,
+          })),
+          ...contentResults.results.slice(0, 3).map((r) => ({
+            type: r.content_type as ContentType,
+            sessionId: r.source_id,
+            sessionTitle: r.title ?? null,
+            timestamp: r.timestamp,
+            snippet: r.snippet || r.content.slice(0, 300),
+            rank: r.rank,
+          })),
+        ]
+
+        if (fakeResults.length === 0) {
+          log(`review: race benchmark skipping "${q}" — no search results`)
+          continue
+        }
+
+        const context = formatResultsForLlm(q, fakeResults)
+        log(
+          `review: racing "${q}" context=${context.length} chars across [${raceModels.map((m) => m.modelId).join(", ")}]`,
+        )
+
+        const race = await raceLlmModels(
+          context,
+          SYNTHESIS_PROMPT,
+          raceModels,
+          raceTimeoutMs,
+        )
+
+        raceResults.push({
+          query: q,
+          searchMs,
+          winner: race.winner,
+          timedOut: race.timedOut,
+          totalMs: race.totalMs,
+          perModel: race.perModel,
+          raceCost: race.totalCost,
+        })
+
+        log(
+          `review: "${q}" → ${race.winner ?? "TIMEOUT"} in ${race.totalMs}ms [${race.perModel.map((m) => `${m.model}=${m.ms}ms(${m.status})`).join(", ")}]`,
+        )
+      } catch (err) {
+        log(
+          `review: race benchmark error for "${q}": ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
+
+    if (raceResults.length > 0) {
+      // Compute summary stats
+      const winsByModel: Record<string, number> = {}
+      for (const r of raceResults) {
+        if (r.winner) {
+          winsByModel[r.winner] = (winsByModel[r.winner] ?? 0) + 1
+        }
+      }
+
+      const timeoutCount = raceResults.filter((r) => r.timedOut).length
+      const successfulMs = raceResults
+        .filter((r) => r.winner)
+        .map((r) => r.totalMs)
+        .sort((a, b) => a - b)
+
+      const allLlmMs = raceResults.map((r) => r.totalMs).sort((a, b) => a - b)
+
+      const totalCost = raceResults.reduce((s, r) => s + r.raceCost, 0)
+      llmRaceBenchmark = {
+        models: raceModels.map((m) => m.modelId),
+        queries: raceResults.length,
+        results: raceResults,
+        summary: {
+          winsByModel,
+          timeoutCount,
+          timeoutPct: Math.round((timeoutCount / raceResults.length) * 100),
+          p50Ms: percentile(allLlmMs, 50),
+          p95Ms: percentile(allLlmMs, 95),
+          avgSearchMs: Math.round(
+            raceResults.reduce((s, r) => s + r.searchMs, 0) /
+              raceResults.length,
+          ),
+          avgLlmMs: Math.round(
+            raceResults.reduce((s, r) => s + r.totalMs, 0) / raceResults.length,
+          ),
+          totalCost,
+          costPerQuery:
+            raceResults.length > 0 ? totalCost / raceResults.length : 0,
+        },
+      }
+
+      // Recommendations based on benchmark
+      if (llmRaceBenchmark.summary.timeoutPct > 50) {
+        recommendations.push(
+          `LLM race: ${llmRaceBenchmark.summary.timeoutPct}% timeouts at ${raceTimeoutMs}ms — providers are slow`,
+        )
+      }
+      if (llmRaceBenchmark.summary.p95Ms > 8000) {
+        recommendations.push(
+          `LLM race P95: ${(llmRaceBenchmark.summary.p95Ms / 1000).toFixed(1)}s — consider making raw mode the default`,
+        )
+      }
+      const topWinner = Object.entries(winsByModel).sort(
+        (a, b) => b[1] - a[1],
+      )[0]
+      if (topWinner) {
+        recommendations.push(
+          `LLM race winner: ${topWinner[0]} won ${topWinner[1]}/${raceResults.length} (P50=${(llmRaceBenchmark.summary.p50Ms / 1000).toFixed(1)}s, P95=${(llmRaceBenchmark.summary.p95Ms / 1000).toFixed(1)}s)`,
+        )
+      }
+    }
+  } else {
+    recommendations.push(
+      "No cheap LLM providers available for race benchmark — check API keys",
+    )
+  }
+
   log(
     `review: completed in ${Date.now() - startTime}ms — ${recommendations.length} recommendations`,
   )
@@ -754,8 +1050,15 @@ export async function reviewMemorySystem(
     hookConfig,
     searchBenchmarks,
     recallTest,
+    llmRaceBenchmark,
     recommendations,
   }
+}
+
+function percentile(sorted: number[], pct: number): number {
+  if (sorted.length === 0) return 0
+  const idx = Math.ceil((pct / 100) * sorted.length) - 1
+  return sorted[Math.max(0, idx)]!
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
