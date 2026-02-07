@@ -18,6 +18,8 @@ export interface QueryOptions {
   onToken?: (token: string) => void
   /** Optional context passed to deep research models */
   context?: string
+  /** AbortSignal to cancel the request */
+  abortSignal?: AbortSignal
 }
 
 export interface QueryResult {
@@ -36,6 +38,7 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
     stream = false,
     onToken,
     context,
+    abortSignal,
   } = options
   const startTime = Date.now()
 
@@ -77,6 +80,7 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
       const result = await streamText({
         model: languageModel,
         messages,
+        abortSignal,
       })
 
       // Consume the stream and call onToken for each part
@@ -107,6 +111,7 @@ export async function queryModel(options: QueryOptions): Promise<QueryResult> {
       const result = await generateText({
         model: languageModel,
         messages,
+        abortSignal,
       })
 
       return {

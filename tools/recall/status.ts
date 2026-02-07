@@ -15,7 +15,8 @@ import {
   getIndexMeta,
   getAllSessionTitles,
 } from "../lib/history/db"
-import { reviewMemorySystem, type ReviewResult } from "../lib/history/recall"
+import { reviewMemorySystem } from "../lib/history/recall"
+import { formatCost } from "../lib/llm/types"
 import {
   BOLD,
   RESET,
@@ -225,12 +226,69 @@ export async function cmdStatus(opts: { json?: boolean }): Promise<void> {
   )
   console.log()
 
+  // ── LLM Race Benchmark ─────────────────────────────────────────────────
+  if (review.llmRaceBenchmark) {
+    const bench = review.llmRaceBenchmark
+    console.log(`${BOLD}LLM Race Benchmark${RESET}`)
+    console.log(
+      `  Models: ${bench.models.join(" vs ")}  (${bench.queries} queries, 10s timeout)`,
+    )
+    console.log()
+
+    // Per-query results table
+    for (const r of bench.results) {
+      const winnerLabel = r.winner
+        ? `${GREEN}${r.winner}${RESET}`
+        : `${RED}TIMEOUT${RESET}`
+      const modelParts = r.perModel
+        .map((m) => {
+          const ms = `${(m.ms / 1000).toFixed(1)}s`
+          const costStr = m.cost ? ` ${formatCost(m.cost)}` : ""
+          const tokStr = m.tokens
+            ? ` ${m.tokens.input}+${m.tokens.output}tok`
+            : ""
+          if (m.status === "ok")
+            return `${GREEN}${m.model}=${ms}${tokStr}${costStr}${RESET}`
+          if (m.status === "timeout")
+            return `${DIM}${m.model}=${ms}(timeout)${RESET}`
+          return `${RED}${m.model}=${ms}(error)${RESET}`
+        })
+        .join("  ")
+      console.log(
+        `  "${r.query}" → ${winnerLabel}  search=${r.searchMs}ms  [${modelParts}]`,
+      )
+    }
+    console.log()
+
+    // Summary
+    const s = bench.summary
+    const winEntries = Object.entries(s.winsByModel)
+      .sort((a, b) => b[1] - a[1])
+      .map(([model, wins]) => `${model}: ${wins}/${bench.queries}`)
+      .join(", ")
+
+    console.log(`  Wins: ${winEntries || "none"}`)
+    console.log(
+      `  Timeouts: ${s.timeoutCount}/${bench.queries} (${s.timeoutPct}%)`,
+    )
+    console.log(
+      `  Latency: P50=${(s.p50Ms / 1000).toFixed(1)}s  P95=${(s.p95Ms / 1000).toFixed(1)}s  avg=${(s.avgLlmMs / 1000).toFixed(1)}s`,
+    )
+    console.log(`  Avg search: ${s.avgSearchMs}ms`)
+    console.log(
+      `  Cost: ${formatCost(s.totalCost)} total  ${formatCost(s.costPerQuery)}/query  (racing ${bench.models.length} models = ${bench.models.length}x per query)`,
+    )
+    console.log()
+  }
+
   // ── Recommendations ───────────────────────────────────────────────────
   if (review.recommendations.length > 0) {
     console.log(`${BOLD}Recommendations${RESET}`)
     for (const rec of review.recommendations) {
       const marker =
-        rec.includes("good") || rec.includes("working")
+        rec.includes("good") ||
+        rec.includes("working") ||
+        rec.includes("winner")
           ? CHECK
           : rec.includes("stale") ||
               rec.includes("not found") ||

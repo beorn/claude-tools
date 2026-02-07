@@ -163,6 +163,7 @@ function streamToken(token: string): void {
 }
 
 interface OutputMeta {
+  query?: string
   model?: string
   tokens?: number
   cost?: string
@@ -170,8 +171,13 @@ interface OutputMeta {
 }
 
 /** Build JSON summary object for the response */
-function buildResultJson(content: string, meta?: OutputMeta): Record<string, unknown> {
-  const result: Record<string, unknown> = { chars: content.length }
+function buildResultJson(
+  content: string,
+  meta?: OutputMeta,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  if (meta?.query) result.query = meta.query
+  result.chars = content.length
   if (meta?.model) result.model = meta.model
   if (meta?.tokens) result.tokens = meta.tokens
   if (meta?.cost) result.cost = meta.cost
@@ -194,10 +200,23 @@ function finalizeOutput(content: string, meta?: OutputMeta): void {
 }
 
 /** Compute cost, finalize output, and exit — shared by all single-model response modes */
-function finishResponse(content: string | undefined, model: { displayName: string }, usage?: { promptTokens: number; completionTokens: number; totalTokens: number }, durationMs?: number): void {
+function finishResponse(
+  content: string | undefined,
+  model: { displayName: string },
+  usage?: {
+    promptTokens: number
+    completionTokens: number
+    totalTokens: number
+  },
+  durationMs?: number,
+  query?: string,
+): void {
   if (!content) return
-  const cost = usage ? estimateCost(model as any, usage.promptTokens, usage.completionTokens) : undefined
+  const cost = usage
+    ? estimateCost(model as any, usage.promptTokens, usage.completionTokens)
+    : undefined
   finalizeOutput(content, {
+    query,
     model: model.displayName,
     tokens: usage?.totalTokens,
     cost: cost !== undefined ? formatCost(cost) : undefined,
@@ -206,17 +225,35 @@ function finishResponse(content: string | undefined, model: { displayName: strin
 }
 
 /** Compute total cost across multiple model responses */
-function totalResponseCost(responses: Array<{ model: any; usage?: { promptTokens: number; completionTokens: number } }>): number {
+function totalResponseCost(
+  responses: Array<{
+    model: any
+    usage?: { promptTokens: number; completionTokens: number }
+  }>,
+): number {
   let total = 0
   for (const resp of responses) {
-    if (resp.usage) total += estimateCost(resp.model, resp.usage.promptTokens, resp.usage.completionTokens)
+    if (resp.usage)
+      total += estimateCost(
+        resp.model,
+        resp.usage.promptTokens,
+        resp.usage.completionTokens,
+      )
   }
   return total
 }
 
 /** Shared single-model ask: select model, stream, finalize */
-async function askAndFinish(question: string, modelMode: string, level: "standard" | "quick", header: (name: string) => string): Promise<void> {
-  const { model, warning } = getBestAvailableModel(modelMode, isProviderAvailable)
+async function askAndFinish(
+  question: string,
+  modelMode: string,
+  level: "standard" | "quick",
+  header: (name: string) => string,
+): Promise<void> {
+  const { model, warning } = getBestAvailableModel(
+    modelMode,
+    isProviderAvailable,
+  )
   if (!model) error(`No model available for ${modelMode}. ${warning || ""}`)
   if (warning) console.error(`⚠️  ${warning}\n`)
   console.error(header(model.displayName) + "\n")
@@ -225,7 +262,13 @@ async function askAndFinish(question: string, modelMode: string, level: "standar
     stream: true,
     onToken: streamToken,
   })
-  finishResponse(response.content, model, response.usage, response.durationMs)
+  finishResponse(
+    response.content,
+    model,
+    response.usage,
+    response.durationMs,
+    question,
+  )
 }
 
 /** Prompt user for Y/n confirmation; exit if declined */
@@ -269,29 +312,47 @@ async function buildContext(topic: string): Promise<string | undefined> {
         console.error("📚 Including context from session history...\n")
         parts.push(
           "Relevant context from previous sessions:\n\n" +
-          results.map((r) => {
-            const role = r.type === "user" ? "User" : "Assistant"
-            return `[${role}]: ${r.snippet.replace(/>>>/g, "").replace(/<<</g, "")}`
-          }).join("\n\n")
+            results
+              .map((r) => {
+                const role = r.type === "user" ? "User" : "Assistant"
+                return `[${role}]: ${r.snippet.replace(/>>>/g, "").replace(/<<</g, "")}`
+              })
+              .join("\n\n"),
         )
       }
-    } catch { /* History not indexed */ }
+    } catch {
+      /* History not indexed */
+    }
   }
   return parts.length > 0 ? parts.join("\n\n---\n\n") : undefined
 }
 
-const VALUE_FLAGS = ["--model", "--models", "--provider", "--context", "--context-file", "--output"]
+const VALUE_FLAGS = [
+  "--model",
+  "--models",
+  "--provider",
+  "--context",
+  "--context-file",
+  "--output",
+]
 
 /** Extract non-flag text from args, optionally starting from index 0 (all args) or 1 (after command) */
 function extractText(fromAll: boolean, exclude?: string[]): string {
   const source = fromAll ? args : args.slice(1)
-  return source.filter((a, i, arr) => {
-    if (a.startsWith("--")) return false
-    if (a.match(/^-[a-zA-Z]$/)) return false
-    if (exclude?.includes(a)) return false
-    if (i > 0 && arr[i - 1]?.startsWith("--") && VALUE_FLAGS.includes(arr[i - 1]!)) return false
-    return true
-  }).join(" ")
+  return source
+    .filter((a, i, arr) => {
+      if (a.startsWith("--")) return false
+      if (a.match(/^-[a-zA-Z]$/)) return false
+      if (exclude?.includes(a)) return false
+      if (
+        i > 0 &&
+        arr[i - 1]?.startsWith("--") &&
+        VALUE_FLAGS.includes(arr[i - 1]!)
+      )
+        return false
+      return true
+    })
+    .join(" ")
 }
 
 function getQuestion(): string {
@@ -404,9 +465,14 @@ async function checkAndRecoverPartials(): Promise<boolean> {
 
 // Keywords that trigger specific modes
 const KEYWORDS = [
-  "quick", "cheap", "mini", "nano",
-  "opinion", "debate",
-  "recover", "partials",
+  "quick",
+  "cheap",
+  "mini",
+  "nano",
+  "opinion",
+  "debate",
+  "recover",
+  "partials",
 ]
 
 async function main() {
@@ -437,12 +503,16 @@ async function main() {
         console.error("📚 Similar past queries:\n")
         for (const s of similar) {
           const relTime = formatRelativeTime(new Date(s.timestamp).getTime())
-          const preview = (s.user_content || "").slice(0, 100).replace(/\n/g, " ")
+          const preview = (s.user_content || "")
+            .slice(0, 100)
+            .replace(/\n/g, " ")
           console.error(`  ${relTime}: ${preview}...`)
         }
         console.error()
       }
-    } catch { /* History not indexed */ }
+    } catch {
+      /* History not indexed */
+    }
 
     await askAndFinish(question, "default", "standard", (name) => `[${name}]`)
     process.exit(0)
@@ -483,7 +553,9 @@ async function main() {
       process.exit(0)
     }
 
-    await confirmOrExit("⚠️  This uses deep research models (~$2-5). Proceed? [Y/n] ")
+    await confirmOrExit(
+      "⚠️  This uses deep research models (~$2-5). Proceed? [Y/n] ",
+    )
 
     const response = await research(topic, {
       context,
@@ -492,7 +564,13 @@ async function main() {
     })
 
     if (response.error) console.error(`Error: ${response.error}`)
-    finishResponse(response.content, response.model, response.usage, response.durationMs)
+    finishResponse(
+      response.content,
+      response.model,
+      response.usage,
+      response.durationMs,
+      topic,
+    )
     process.exit(0)
   }
 
@@ -511,14 +589,24 @@ async function main() {
     case "nano": {
       const question = getQuestion()
       if (!question) error("Usage: llm quick <question>")
-      await askAndFinish(question, "quick", "quick", (name) => `[${name} - quick mode]`)
+      await askAndFinish(
+        question,
+        "quick",
+        "quick",
+        (name) => `[${name} - quick mode]`,
+      )
       break
     }
 
     case "opinion": {
       const question = getQuestion()
       if (!question) error("Usage: llm opinion <question>")
-      await askAndFinish(question, "opinion", "standard", (name) => `[Second opinion from ${name}]`)
+      await askAndFinish(
+        question,
+        "opinion",
+        "standard",
+        (name) => `[Second opinion from ${name}]`,
+      )
       break
     }
 
@@ -566,7 +654,9 @@ async function main() {
         process.exit(0)
       }
 
-      await confirmOrExit("⚠️  This queries multiple models (~$1-3). Proceed? [Y/n] ")
+      await confirmOrExit(
+        "⚠️  This queries multiple models (~$1-3). Proceed? [Y/n] ",
+      )
 
       const result = await consensus({
         question: enrichedQuestion,
@@ -602,6 +692,7 @@ async function main() {
         console.error("\n" + debateContent)
       }
       finalizeOutput(debateContent, {
+        query: question,
         model: `${result.responses.length} models`,
         cost: formatCost(totalResponseCost(result.responses)),
         durationMs: result.totalDurationMs,

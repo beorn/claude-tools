@@ -130,7 +130,7 @@ export async function cmdSearch(
     json: json,
     since,
     limit: limitStr ? parseInt(limitStr, 10) : 10,
-    timeout: timeoutStr ? parseInt(timeoutStr, 10) : 8000,
+    timeout: timeoutStr ? parseInt(timeoutStr, 10) : 4000,
     projectFilter: project,
   }
 
@@ -161,8 +161,14 @@ function formatRecallOutput(
     console.log(result.synthesis)
     console.log()
     const uniqueSessions = new Set(result.results.map((r) => r.sessionId)).size
+    const timingParts = [`${result.durationMs}ms`]
+    if (result.timing) {
+      timingParts.push(`search=${result.timing.searchMs}ms`)
+      if (result.timing.llmMs !== undefined)
+        timingParts.push(`llm=${result.timing.llmMs}ms`)
+    }
     console.log(
-      `${DIM}${result.results.length} results from ${uniqueSessions} sessions (${result.durationMs}ms)${RESET}`,
+      `${DIM}${result.results.length} results from ${uniqueSessions} sessions (${timingParts.join(", ")})${RESET}`,
     )
     if (result.llmCost !== undefined && result.llmCost > 0) {
       console.log(`${DIM}LLM cost: $${result.llmCost.toFixed(4)}${RESET}`)
@@ -170,7 +176,7 @@ function formatRecallOutput(
     return
   }
 
-  // Fallback: synthesis failed, show raw results
+  // Fallback: synthesis failed/aborted, show raw results
   formatRawRecallResults(result)
 }
 
@@ -201,7 +207,13 @@ function formatRawRecallResults(result: RecallResult): void {
     console.log()
   }
 
-  console.log(`${DIM}(${result.durationMs}ms)${RESET}`)
+  const timingParts = [`${result.durationMs}ms`]
+  if (result.timing) {
+    timingParts.push(`search=${result.timing.searchMs}ms`)
+    if (result.timing.llmMs !== undefined)
+      timingParts.push(`llm=${result.timing.llmMs}ms`)
+  }
+  console.log(`${DIM}(${timingParts.join(", ")})${RESET}`)
 }
 
 function formatType(type: string): string {

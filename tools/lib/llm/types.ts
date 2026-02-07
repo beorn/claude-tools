@@ -564,6 +564,23 @@ export function getCheapModel(): Model | undefined {
 }
 
 /**
+ * Get cheap models from distinct available providers (for racing).
+ * Returns up to `max` models, one per provider, preferring openai first.
+ */
+export function getCheapModels(max = 2): Model[] {
+  const seen = new Set<string>()
+  const result: Model[] = []
+  for (const m of MODELS) {
+    if (m.costTier !== "low" || m.isDeepResearch || seen.has(m.provider))
+      continue
+    seen.add(m.provider)
+    result.push(m)
+    if (result.length >= max) break
+  }
+  return result
+}
+
+/**
  * Check if model requires cost confirmation (expensive)
  */
 export function requiresConfirmation(model: Model, threshold = 0.1): boolean {

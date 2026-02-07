@@ -67,7 +67,7 @@ program
     "Time filter: 1h, 1d, 1w, today, yesterday (default: 30d)",
   )
   .option("-n, --limit <num>", "Max results (default: 10)")
-  .option("--timeout <ms>", "LLM timeout in ms (default: 8000)")
+  .option("--timeout <ms>", "LLM timeout in ms (default: 4000)")
   .option("-p, --project <glob>", "Project filter")
   .option("-g, --grep", "Regex mode (slower, scans files)")
   .option("-q, --question", "User messages only (implies --raw)")
