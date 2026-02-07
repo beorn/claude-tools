@@ -130,7 +130,7 @@ export async function cmdSearch(
     json: json,
     since,
     limit: limitStr ? parseInt(limitStr, 10) : 10,
-    timeout: timeoutStr ? parseInt(timeoutStr, 10) : 4000,
+    timeout: timeoutStr ? parseInt(timeoutStr, 10) : 10000,
     projectFilter: project,
   }
 
@@ -186,7 +186,10 @@ function formatRawRecallResults(result: RecallResult): void {
   )
 
   for (const r of result.results) {
-    const date = new Date(r.timestamp).toISOString().split("T")[0]
+    const date = new Date(r.timestamp)
+      .toISOString()
+      .replace("T", " ")
+      .replace(/\.\d+Z$/, "Z")
     const typeLabel = formatType(r.type)
     const sessionLabel = r.sessionTitle
       ? `${r.sessionTitle}`
@@ -685,7 +688,10 @@ async function cmdGrep(
       firstMatch.sessionFile.split(path.sep)[0] || "",
     )
     const date = firstMatch.timestamp
-      ? new Date(firstMatch.timestamp).toLocaleDateString()
+      ? new Date(firstMatch.timestamp)
+          .toISOString()
+          .replace("T", " ")
+          .replace(/\.\d+Z$/, "Z")
       : "unknown date"
 
     console.log(
